@@ -47,8 +47,7 @@ TODO: Make sure that inverse_magnitude cannot be zero, as that would result in
       divide-by-zero errors. Therefore, enforce that a document has a non-zero
       number of words.
 
-TODO: Template over whether or not document modification is allowed, or
-      whether or not IDF weighting will be used.
+TODO: Template over whether or not document modification is allowed.
 
 TODO: Add support for threading (making the functions thread-safe). Ideally,
       support would be enabled via a template argument.
@@ -58,6 +57,8 @@ namespace vocabulary_tree {
 
 namespace idf_weights {
 
+// This class is used when IDF-weights are enabled via the enable_idf_weights
+// template argument in VocabularyTree.
 template<class VocabularyTree>
 class IdfWeightsEnabled
 {
@@ -71,9 +72,11 @@ class IdfWeightsEnabled
     void reset_idf_weights();
 
   protected:
+    // Clear the IDF weights.
     void clear_idf_weights()
     { m_word_idf_weights.clear(); }
 
+    // Return the IDF weight for a particular word.
     inline VocabularyTreeTypes::frequency_t get_idf_weight(
       const VocabularyTreeTypes::word_t word) const
     { return m_word_idf_weights[word]; }
@@ -83,6 +86,8 @@ class IdfWeightsEnabled
     std::vector<VocabularyTreeTypes::frequency_t> m_word_idf_weights;
 };
 
+// This class is used when IDF-weights are disabled via the enable_idf_weights
+// template argument in VocabularyTree.
 class IdfWeightsDisabled
 {
   protected:
