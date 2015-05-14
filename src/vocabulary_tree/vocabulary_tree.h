@@ -93,7 +93,7 @@ class IdfWeightsDisabled
     {};
 
     VocabularyTreeTypes::frequency_t get_idf_weight(
-      const VocabularyTreeTypes::word_t word) const
+      const VocabularyTreeTypes::word_t /*word*/) const
     { return 1; }
 };
 
@@ -1014,6 +1014,8 @@ query_database(
     const frequency_t query_frequency =
       histogram_entry.frequency * query_word_histogram.inverse_magnitude;
 
+    const frequency_t idf_weight = get_idf_weight(histogram_entry.word);
+
     const auto & current_inverted_indices =
       m_word_inverted_indices[histogram_entry.word];
     for (const auto & inverted_index_entry : current_inverted_indices)
@@ -1026,7 +1028,7 @@ query_database(
       if (enable_idf_weights)
       {
         m_histogram_distances[storage_index].add_term(
-          query_frequency, frequency, get_idf_weight(histogram_entry.word));
+          query_frequency, frequency, idf_weight);
       }
       else
       {
@@ -1035,7 +1037,7 @@ query_database(
       }
     }
   }
-
+  
   query_results.resize(document_storage_capacity);
   for (storage_index_t i = 0; i < document_storage_capacity; ++i)
   {
@@ -1063,56 +1065,6 @@ query_database(
       query_results.resize(i);
       break;
     }
-  }
-}
-
-template<class VocabularyTree>
-void idf_weights::IdfWeightsEnabled<VocabularyTree>::compute_idf_weights()
-{
-  // IDF weight for a word
-  //   = log(# Documents in Database / # Documents with Word)
-  //   = log(# Documents in Database) - log(# Documents with Word)
-  // By splitting the computation into its subtraction form, we avoid a division
-  // operation on each iteration.
-
-  const VocabularyTree * voc_tree = static_cast<const VocabularyTree *>(this);
-
-  // If there are no documents in the database, reset the idf weights.
-  if (voc_tree->num_documents_in_database() == 0)
-  {
-    reset_idf_weights();
-    return;
-  }
-
-  const VocabularyTree::frequency_t database_weight =
-    log(static_cast<VocabularyTree::frequency_t>(voc_tree->num_documents_in_database()));
-
-  for (VocabularyTree::index_t i = 0; i < voc_tree->m_num_words_in_vocabulary; ++i)
-  {
-    const VocabularyTree::index_t num_documents_with_word =
-      static_cast<VocabularyTree::index_t>(voc_tree->m_word_inverted_indices[i].size());
-    if (num_documents_with_word > 0)
-    {
-      const VocabularyTree::frequency_t word_weight =
-        log(static_cast<VocabularyTree::frequency_t>(num_documents_with_word));
-      m_word_idf_weights[i] = database_weight - word_weight;
-    }
-    else
-    {
-      m_word_idf_weights[i] = 0;
-    }
-  }
-}
-
-template<class VocabularyTree>
-void idf_weights::IdfWeightsEnabled<VocabularyTree>::reset_idf_weights()
-{
-  const VocabularyTree * voc_tree = static_cast<const VocabularyTree *>(this);
-
-  m_word_idf_weights.resize(voc_tree->m_num_words_in_vocabulary);
-  for (VocabularyTree::index_t i = 0; i < voc_tree->m_num_words_in_vocabulary; ++i)
-  {
-    m_word_idf_weights[i] = 1;
   }
 }
 
@@ -1255,6 +1207,56 @@ load_vocabulary_from_file_snavely_vocab_tree_2_format_helper(
       float count = 0;
       fread(&count, sizeof(float), 1, file);
     }
+  }
+}
+
+template<class VocabularyTree>
+void idf_weights::IdfWeightsEnabled<VocabularyTree>::compute_idf_weights()
+{
+  // IDF weight for a word
+  //   = log(# Documents in Database / # Documents with Word)
+  //   = log(# Documents in Database) - log(# Documents with Word)
+  // By splitting the computation into its subtraction form, we avoid a division
+  // operation on each iteration.
+
+  const VocabularyTree * voc_tree = static_cast<const VocabularyTree *>(this);
+
+  // If there are no documents in the database, reset the idf weights.
+  if (voc_tree->num_documents_in_database() == 0)
+  {
+    reset_idf_weights();
+    return;
+  }
+
+  const VocabularyTree::frequency_t database_weight =
+    log(static_cast<VocabularyTree::frequency_t>(voc_tree->num_documents_in_database()));
+
+  for (VocabularyTree::index_t i = 0; i < voc_tree->m_num_words_in_vocabulary; ++i)
+  {
+    const VocabularyTree::index_t num_documents_with_word =
+      static_cast<VocabularyTree::index_t>(voc_tree->m_word_inverted_indices[i].size());
+    if (num_documents_with_word > 0)
+    {
+      const VocabularyTree::frequency_t word_weight =
+        log(static_cast<VocabularyTree::frequency_t>(num_documents_with_word));
+      m_word_idf_weights[i] = database_weight - word_weight;
+    }
+    else
+    {
+      m_word_idf_weights[i] = 0;
+    }
+  }
+}
+
+template<class VocabularyTree>
+void idf_weights::IdfWeightsEnabled<VocabularyTree>::reset_idf_weights()
+{
+  const VocabularyTree * voc_tree = static_cast<const VocabularyTree *>(this);
+
+  m_word_idf_weights.resize(voc_tree->m_num_words_in_vocabulary);
+  for (VocabularyTree::index_t i = 0; i < voc_tree->m_num_words_in_vocabulary; ++i)
+  {
+    m_word_idf_weights[i] = 1;
   }
 }
 
