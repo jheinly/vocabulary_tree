@@ -12,6 +12,7 @@
 #include <iostream>
 #include <stdexcept>
 #include <string>
+#include <type_traits>
 #include <unordered_map>
 #include <vector>
 
@@ -55,12 +56,62 @@ TODO: Add support for threading (making the functions thread-safe). Ideally,
 
 namespace vocabulary_tree {
 
+namespace idf_weights {
+
+template<class VocabularyTree>
+class IdfWeightsEnabled
+{
+  public:
+    // Compute and update the IDF (inverse document frequency) weights for the
+    // words in the database.
+    void compute_idf_weights();
+
+    // Reset the IDF (inverse document frequency) weights to 1.0 for the words
+    // in the database.
+    void reset_idf_weights();
+
+  protected:
+    void clear_idf_weights()
+    { m_word_idf_weights.clear(); }
+
+    inline VocabularyTreeTypes::frequency_t get_idf_weight(
+      const VocabularyTreeTypes::word_t word) const
+    { return m_word_idf_weights[word]; }
+
+  private:
+    // Each word will be assigned an IDF weight (default is 1.0).
+    std::vector<VocabularyTreeTypes::frequency_t> m_word_idf_weights;
+};
+
+class IdfWeightsDisabled
+{
+  protected:
+    void reset_idf_weights() const
+    {};
+
+    void clear_idf_weights() const
+    {};
+
+    VocabularyTreeTypes::frequency_t get_idf_weight(
+      const VocabularyTreeTypes::word_t word) const
+    { return 1; }
+};
+
+} // namespace idf_weights
+
 template<
   typename Descriptor = descriptor::Sift,
   typename HistogramNormalization = histogram_normalization::L1,
-  typename HistogramDistance = histogram_distance::Min>
-class VocabularyTree : public VocabularyTreeTypes
+  typename HistogramDistance = histogram_distance::Min,
+  bool enable_idf_weights = true>
+class VocabularyTree : public VocabularyTreeTypes,
+  public std::conditional<
+    enable_idf_weights,
+    idf_weights::IdfWeightsEnabled<VocabularyTree<Descriptor, HistogramNormalization, HistogramDistance, true> >,
+    idf_weights::IdfWeightsDisabled>::type
 {
+  friend class idf_weights::IdfWeightsEnabled<VocabularyTree<Descriptor, HistogramNormalization, HistogramDistance, enable_idf_weights> >;
+
   public:
     ////////////////////////////////////////////////////////////////////////////
     // Public Structures
@@ -204,14 +255,6 @@ class VocabularyTree : public VocabularyTreeTypes
       const index_t max_num_results,
       std::vector<QueryResult> & query_results) const;
 
-    // Compute and update the IDF (inverse document frequency) weights for the
-    // words in the database.
-    void compute_idf_weights();
-
-    // Reset the IDF (inverse document frequency) weights to 1.0 for the words
-    // in the database.
-    void reset_idf_weights();
-
     // Remove all stored documents in the database.
     void clear_database();
 
@@ -333,9 +376,6 @@ class VocabularyTree : public VocabularyTreeTypes
     // that belong to it.
     std::vector<std::vector<InvertedIndexEntry> > m_word_inverted_indices;
 
-    // Each word will be assigned an IDF weight (default is 1.0).
-    std::vector<frequency_t> m_word_idf_weights;
-
     // Each document stored in the database will have an entry in
     // m_document_storage.
     IndexedStorage<DatabaseDocument, storage_index_t> m_document_storage;
@@ -365,8 +405,9 @@ class VocabularyTree : public VocabularyTreeTypes
 template<
   typename Descriptor,
   typename HistogramNormalization,
-  typename HistogramDistance>
-VocabularyTree<Descriptor, HistogramNormalization, HistogramDistance>::
+  typename HistogramDistance,
+  bool enable_idf_weights>
+VocabularyTree<Descriptor, HistogramNormalization, HistogramDistance, enable_idf_weights>::
 VocabularyTree()
 : m_num_words_in_vocabulary(0)
 {}
@@ -374,26 +415,28 @@ VocabularyTree()
 template<
   typename Descriptor,
   typename HistogramNormalization,
-  typename HistogramDistance>
-VocabularyTree<Descriptor, HistogramNormalization, HistogramDistance>::
+  typename HistogramDistance,
+  bool enable_idf_weights>
+VocabularyTree<Descriptor, HistogramNormalization, HistogramDistance, enable_idf_weights>::
 ~VocabularyTree()
 {
   m_descriptors.clear();
   m_nodes.clear();
   m_word_inverted_indices.clear();
-  m_word_idf_weights.clear();
   m_document_storage.clear();
   m_document_to_storage_indices.clear();
   m_histogram_counts.clear();
   m_histogram_distances.clear();
   m_words.clear();
+  clear_idf_weights();
 }
 
 template<
   typename Descriptor,
   typename HistogramNormalization,
-  typename HistogramDistance>
-void VocabularyTree<Descriptor, HistogramNormalization, HistogramDistance>::
+  typename HistogramDistance,
+  bool enable_idf_weights>
+void VocabularyTree<Descriptor, HistogramNormalization, HistogramDistance, enable_idf_weights>::
 load_vocabulary_from_file_snavely_vocab_tree_2_format(
   const std::string & vocabulary_file_path)
 {
@@ -526,8 +569,9 @@ load_vocabulary_from_file_snavely_vocab_tree_2_format(
 template<
   typename Descriptor,
   typename HistogramNormalization,
-  typename HistogramDistance>
-void VocabularyTree<Descriptor, HistogramNormalization, HistogramDistance>::
+  typename HistogramDistance,
+  bool enable_idf_weights>
+void VocabularyTree<Descriptor, HistogramNormalization, HistogramDistance, enable_idf_weights>::
 add_document_to_database(
   const typename Descriptor::DimensionType * const descriptors,
   const index_t num_descriptors,
@@ -548,8 +592,9 @@ add_document_to_database(
 template<
   typename Descriptor,
   typename HistogramNormalization,
-  typename HistogramDistance>
-void VocabularyTree<Descriptor, HistogramNormalization, HistogramDistance>::
+  typename HistogramDistance,
+  bool enable_idf_weights>
+void VocabularyTree<Descriptor, HistogramNormalization, HistogramDistance, enable_idf_weights>::
 remove_document_from_database(
   const typename Descriptor::DimensionType * const descriptors,
   const index_t num_descriptors,
@@ -570,8 +615,9 @@ remove_document_from_database(
 template<
   typename Descriptor,
   typename HistogramNormalization,
-  typename HistogramDistance>
-void VocabularyTree<Descriptor, HistogramNormalization, HistogramDistance>::
+  typename HistogramDistance,
+  bool enable_idf_weights>
+void VocabularyTree<Descriptor, HistogramNormalization, HistogramDistance, enable_idf_weights>::
 add_words_to_document(
   const typename Descriptor::DimensionType * const descriptors_to_add,
   const index_t num_descriptors_to_add,
@@ -592,8 +638,9 @@ add_words_to_document(
 template<
   typename Descriptor,
   typename HistogramNormalization,
-  typename HistogramDistance>
-void VocabularyTree<Descriptor, HistogramNormalization, HistogramDistance>::
+  typename HistogramDistance,
+  bool enable_idf_weights>
+void VocabularyTree<Descriptor, HistogramNormalization, HistogramDistance, enable_idf_weights>::
 remove_words_from_document(
   const typename Descriptor::DimensionType * const descriptors_to_remove,
   const index_t num_descriptors_to_remove,
@@ -614,8 +661,9 @@ remove_words_from_document(
 template<
   typename Descriptor,
   typename HistogramNormalization,
-  typename HistogramDistance>
-void VocabularyTree<Descriptor, HistogramNormalization, HistogramDistance>::
+  typename HistogramDistance,
+  bool enable_idf_weights>
+void VocabularyTree<Descriptor, HistogramNormalization, HistogramDistance, enable_idf_weights>::
 query_database(
   const typename Descriptor::DimensionType * const query_descriptors,
   const index_t num_query_descriptors,
@@ -638,8 +686,9 @@ query_database(
 template<
   typename Descriptor,
   typename HistogramNormalization,
-  typename HistogramDistance>
-void VocabularyTree<Descriptor, HistogramNormalization, HistogramDistance>::
+  typename HistogramDistance,
+  bool enable_idf_weights>
+void VocabularyTree<Descriptor, HistogramNormalization, HistogramDistance, enable_idf_weights>::
 compute_words(
   const typename Descriptor::DimensionType * const descriptors,
   const index_t num_descriptors,
@@ -680,8 +729,9 @@ compute_words(
 template<
   typename Descriptor,
   typename HistogramNormalization,
-  typename HistogramDistance>
-void VocabularyTree<Descriptor, HistogramNormalization, HistogramDistance>::
+  typename HistogramDistance,
+  bool enable_idf_weights>
+void VocabularyTree<Descriptor, HistogramNormalization, HistogramDistance, enable_idf_weights>::
 compute_word_histogram(
   const std::vector<word_t> & words,
   WordHistogram & word_histogram) const
@@ -723,8 +773,9 @@ compute_word_histogram(
 template<
   typename Descriptor,
   typename HistogramNormalization,
-  typename HistogramDistance>
-void VocabularyTree<Descriptor, HistogramNormalization, HistogramDistance>::
+  typename HistogramDistance,
+  bool enable_idf_weights>
+void VocabularyTree<Descriptor, HistogramNormalization, HistogramDistance, enable_idf_weights>::
 add_document_to_database(
   const WordHistogram & word_histogram,
   const document_id_t new_document_id)
@@ -754,8 +805,9 @@ add_document_to_database(
 template<
   typename Descriptor,
   typename HistogramNormalization,
-  typename HistogramDistance>
-void VocabularyTree<Descriptor, HistogramNormalization, HistogramDistance>::
+  typename HistogramDistance,
+  bool enable_idf_weights>
+void VocabularyTree<Descriptor, HistogramNormalization, HistogramDistance, enable_idf_weights>::
 remove_document_from_database(
   const WordHistogram & word_histogram,
   const document_id_t document_id)
@@ -801,8 +853,9 @@ remove_document_from_database(
 template<
   typename Descriptor,
   typename HistogramNormalization,
-  typename HistogramDistance>
-bool VocabularyTree<Descriptor, HistogramNormalization, HistogramDistance>::
+  typename HistogramDistance,
+  bool enable_idf_weights>
+bool VocabularyTree<Descriptor, HistogramNormalization, HistogramDistance, enable_idf_weights>::
 is_document_in_database(
   const document_id_t document_id) const
 {
@@ -820,8 +873,9 @@ is_document_in_database(
 template<
   typename Descriptor,
   typename HistogramNormalization,
-  typename HistogramDistance>
-void VocabularyTree<Descriptor, HistogramNormalization, HistogramDistance>::
+  typename HistogramDistance,
+  bool enable_idf_weights>
+void VocabularyTree<Descriptor, HistogramNormalization, HistogramDistance, enable_idf_weights>::
 add_words_to_document(
   const WordHistogram & histogram_of_words_to_add,
   const document_id_t document_id)
@@ -877,8 +931,9 @@ add_words_to_document(
 template<
   typename Descriptor,
   typename HistogramNormalization,
-  typename HistogramDistance>
-void VocabularyTree<Descriptor, HistogramNormalization, HistogramDistance>::
+  typename HistogramDistance,
+  bool enable_idf_weights>
+void VocabularyTree<Descriptor, HistogramNormalization, HistogramDistance, enable_idf_weights>::
 remove_words_from_document(
   const WordHistogram & histogram_of_words_to_remove,
   const document_id_t document_id)
@@ -938,8 +993,9 @@ remove_words_from_document(
 template<
   typename Descriptor,
   typename HistogramNormalization,
-  typename HistogramDistance>
-void VocabularyTree<Descriptor, HistogramNormalization, HistogramDistance>::
+  typename HistogramDistance,
+  bool enable_idf_weights>
+void VocabularyTree<Descriptor, HistogramNormalization, HistogramDistance, enable_idf_weights>::
 query_database(
   const WordHistogram & query_word_histogram,
   const index_t max_num_results,
@@ -958,8 +1014,6 @@ query_database(
     const frequency_t query_frequency =
       histogram_entry.frequency * query_word_histogram.inverse_magnitude;
 
-    const frequency_t idf_weight = m_word_idf_weights[histogram_entry.word];
-
     const auto & current_inverted_indices =
       m_word_inverted_indices[histogram_entry.word];
     for (const auto & inverted_index_entry : current_inverted_indices)
@@ -969,8 +1023,16 @@ query_database(
         inverted_index_entry.frequency *
         m_document_storage[storage_index].inverse_magnitude;
 
-      m_histogram_distances[storage_index].add_term(
-        query_frequency, frequency, idf_weight);
+      if (enable_idf_weights)
+      {
+        m_histogram_distances[storage_index].add_term(
+          query_frequency, frequency, get_idf_weight(histogram_entry.word));
+      }
+      else
+      {
+        m_histogram_distances[storage_index].add_term(
+          query_frequency, frequency);
+      }
     }
   }
 
@@ -1004,12 +1066,8 @@ query_database(
   }
 }
 
-template<
-  typename Descriptor,
-  typename HistogramNormalization,
-  typename HistogramDistance>
-void VocabularyTree<Descriptor, HistogramNormalization, HistogramDistance>::
-compute_idf_weights()
+template<class VocabularyTree>
+void idf_weights::IdfWeightsEnabled<VocabularyTree>::compute_idf_weights()
 {
   // IDF weight for a word
   //   = log(# Documents in Database / # Documents with Word)
@@ -1017,24 +1075,26 @@ compute_idf_weights()
   // By splitting the computation into its subtraction form, we avoid a division
   // operation on each iteration.
 
+  const VocabularyTree * voc_tree = static_cast<const VocabularyTree *>(this);
+
   // If there are no documents in the database, reset the idf weights.
-  if (num_documents_in_database() == 0)
+  if (voc_tree->num_documents_in_database() == 0)
   {
     reset_idf_weights();
     return;
   }
 
-  const frequency_t database_weight =
-    log(static_cast<frequency_t>(num_documents_in_database()));
+  const VocabularyTree::frequency_t database_weight =
+    log(static_cast<VocabularyTree::frequency_t>(voc_tree->num_documents_in_database()));
 
-  for (index_t i = 0; i < m_num_words_in_vocabulary; ++i)
+  for (VocabularyTree::index_t i = 0; i < voc_tree->m_num_words_in_vocabulary; ++i)
   {
-    const index_t num_documents_with_word =
-      static_cast<index_t>(m_word_inverted_indices[i].size());
+    const VocabularyTree::index_t num_documents_with_word =
+      static_cast<VocabularyTree::index_t>(voc_tree->m_word_inverted_indices[i].size());
     if (num_documents_with_word > 0)
     {
-      const frequency_t word_weight =
-        log(static_cast<frequency_t>(num_documents_with_word));
+      const VocabularyTree::frequency_t word_weight =
+        log(static_cast<VocabularyTree::frequency_t>(num_documents_with_word));
       m_word_idf_weights[i] = database_weight - word_weight;
     }
     else
@@ -1044,15 +1104,13 @@ compute_idf_weights()
   }
 }
 
-template<
-  typename Descriptor,
-  typename HistogramNormalization,
-  typename HistogramDistance>
-void VocabularyTree<Descriptor, HistogramNormalization, HistogramDistance>::
-reset_idf_weights()
+template<class VocabularyTree>
+void idf_weights::IdfWeightsEnabled<VocabularyTree>::reset_idf_weights()
 {
-  m_word_idf_weights.resize(m_num_words_in_vocabulary);
-  for (index_t i = 0; i < m_num_words_in_vocabulary; ++i)
+  const VocabularyTree * voc_tree = static_cast<const VocabularyTree *>(this);
+
+  m_word_idf_weights.resize(voc_tree->m_num_words_in_vocabulary);
+  for (VocabularyTree::index_t i = 0; i < voc_tree->m_num_words_in_vocabulary; ++i)
   {
     m_word_idf_weights[i] = 1;
   }
@@ -1061,8 +1119,9 @@ reset_idf_weights()
 template<
   typename Descriptor,
   typename HistogramNormalization,
-  typename HistogramDistance>
-void VocabularyTree<Descriptor, HistogramNormalization, HistogramDistance>::
+  typename HistogramDistance,
+  bool enable_idf_weights>
+void VocabularyTree<Descriptor, HistogramNormalization, HistogramDistance, enable_idf_weights>::
 clear_database()
 {
   m_word_inverted_indices.resize(m_num_words_in_vocabulary);
@@ -1075,8 +1134,9 @@ clear_database()
 template<
   typename Descriptor,
   typename HistogramNormalization,
-  typename HistogramDistance>
-VocabularyTreeTypes::index_t VocabularyTree<Descriptor, HistogramNormalization, HistogramDistance>::
+  typename HistogramDistance,
+  bool enable_idf_weights>
+VocabularyTreeTypes::index_t VocabularyTree<Descriptor, HistogramNormalization, HistogramDistance, enable_idf_weights>::
 compute_best_child_node(
   const typename Descriptor::DimensionType * const descriptor,
   const Node & node) const
@@ -1105,8 +1165,9 @@ compute_best_child_node(
 template<
   typename Descriptor,
   typename HistogramNormalization,
-  typename HistogramDistance>
-void VocabularyTree<Descriptor, HistogramNormalization, HistogramDistance>::
+  typename HistogramDistance,
+  bool enable_idf_weights>
+void VocabularyTree<Descriptor, HistogramNormalization, HistogramDistance, enable_idf_weights>::
 load_vocabulary_from_file_snavely_vocab_tree_2_format_helper(
   FILE * file,
   const index_t node_index,

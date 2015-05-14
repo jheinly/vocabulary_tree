@@ -32,6 +32,11 @@ class Dot : public VocabularyTreeTypes
 
     inline void add_term(
       const frequency_t frequency1,
+      const frequency_t frequency2)
+    { m_magnitude += frequency1 * frequency2; }
+
+    inline void add_term(
+      const frequency_t frequency1,
       const frequency_t frequency2,
       const frequency_t weight)
     { m_magnitude += weight * frequency1 * frequency2; }
@@ -57,11 +62,14 @@ class Min : public VocabularyTreeTypes
 
     inline void add_term(
       const frequency_t frequency1,
+      const frequency_t frequency2)
+    { m_magnitude += std::min(frequency1, frequency2); }
+
+    inline void add_term(
+      const frequency_t frequency1,
       const frequency_t frequency2,
       const frequency_t weight)
-    {
-      m_magnitude += weight * std::min(frequency1, frequency2);
-    }
+    { m_magnitude += weight * std::min(frequency1, frequency2); }
 
     inline frequency_t compute_magnitude() const
     { return m_magnitude; }
