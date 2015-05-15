@@ -9,6 +9,7 @@ cmake_minimum_required(VERSION 3.0)
 cmh_add_library_module(
   src/vocabulary_tree/indexed_storage.h
   src/vocabulary_tree/vocabulary_tree.h
+  src/vocabulary_tree/vocabulary_tree_conditionally_enable.h
   src/vocabulary_tree/vocabulary_tree_descriptor_types.h
   src/vocabulary_tree/vocabulary_tree_descriptor_types.cpp
   src/vocabulary_tree/vocabulary_tree_histogram_distance_types.h
