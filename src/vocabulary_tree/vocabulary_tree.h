@@ -25,7 +25,8 @@ NOTE: For ease of programming, define the class in the following manner:
         typedef vocabulary_tree::VocabularyTree<
           vocabulary_tree::descriptor::Sift,
           vocabulary_tree::histogram_normalization::L1,
-          vocabulary_tree::histogram_distance::Min> VocTree;
+          vocabulary_tree::histogram_distance::Min,
+          true> VocTree;
       This allows an instance of the class to be declared as:
         VocTree voc_tree;
       Relevant types can also be accessed as follows:
@@ -54,6 +55,8 @@ TODO: Add support for threading (making the functions thread-safe). Ideally,
 */
 
 namespace vocabulary_tree {
+
+namespace conditionally_enable {
 
 namespace idf_weights {
 
@@ -104,6 +107,47 @@ class IdfWeightsDisabled
 
 } // namespace idf_weights
 
+namespace histogram_normalization {
+
+// This class is used when histogram normalization is enabled via the
+// HistogramNormalization template argument being not equal to None in
+// Vocabulary Tree.
+class HistogramNormalizationEnabled
+{
+  public:
+    // Return the inverse magnitude of the histogram.
+    inline VocabularyTreeTypes::frequency_t get_inverse_magnitude() const
+    { return m_inverse_magnitude; }
+
+    // Set the inverse magnitude of the histogram.
+    inline void set_inverse_magnitude(
+      const VocabularyTreeTypes::frequency_t inverse_magnitude)
+    { m_inverse_magnitude = inverse_magnitude; }
+
+  private:
+    // When histogram normalization is enabled, the inverse magnitude of each
+    // histogram is computed and stored.
+    VocabularyTreeTypes::frequency_t m_inverse_magnitude;
+};
+
+// This class is used when histogram normalization is disabled via the
+// HistogramNormalization template argument being equal to None in
+// Vocabulary Tree.
+class HistogramNormalizationDisabled
+{
+  public:
+    inline VocabularyTreeTypes::frequency_t get_inverse_magnitude() const
+    { return 1; }
+
+    inline void set_inverse_magnitude(
+      const VocabularyTreeTypes::frequency_t /*inverse_magnitude*/) const
+    {}
+};
+
+} // namespace histogram_normalization
+
+} // namespace conditionally_enable
+
 template<
   typename Descriptor = descriptor::Sift,
   typename HistogramNormalization = histogram_normalization::L1,
@@ -112,10 +156,12 @@ template<
 class VocabularyTree : public VocabularyTreeTypes,
   public std::conditional<
     enable_idf_weights,
-    idf_weights::IdfWeightsEnabled<VocabularyTree<Descriptor, HistogramNormalization, HistogramDistance, true> >,
-    idf_weights::IdfWeightsDisabled>::type
+    conditionally_enable::idf_weights::IdfWeightsEnabled<
+      VocabularyTree<Descriptor, HistogramNormalization, HistogramDistance, true> >,
+    conditionally_enable::idf_weights::IdfWeightsDisabled>::type
 {
-  friend class idf_weights::IdfWeightsEnabled<VocabularyTree<Descriptor, HistogramNormalization, HistogramDistance, enable_idf_weights> >;
+  friend class conditionally_enable::idf_weights::IdfWeightsEnabled<
+    VocabularyTree<Descriptor, HistogramNormalization, HistogramDistance, true> >;
 
   public:
     ////////////////////////////////////////////////////////////////////////////
@@ -141,10 +187,12 @@ class VocabularyTree : public VocabularyTreeTypes,
     // of words, and their occurrence frequency (as HistogramEntry objects). The
     // inverse magnitude of the histogram is also stored for use in histogram
     // normalization.
-    struct WordHistogram
+    struct WordHistogram : public std::conditional<
+      std::is_same<HistogramNormalization, histogram_normalization::None>::value,
+      conditionally_enable::histogram_normalization::HistogramNormalizationDisabled,
+      conditionally_enable::histogram_normalization::HistogramNormalizationEnabled>::type
     {
       std::vector<HistogramEntry> histogram_entries;
-      frequency_t inverse_magnitude;
     };
 
     // This struct a single query result, in that it contains a document's ID,
@@ -318,17 +366,16 @@ class VocabularyTree : public VocabularyTreeTypes,
     // (m_document_storage), and each document is assigned a unique storage
     // index. This struct stores the inverse magnitude of the histogram of words
     // with which it is currently associated.
-    struct DatabaseDocument
+    struct DatabaseDocument : public std::conditional<
+      std::is_same<HistogramNormalization, histogram_normalization::None>::value,
+      conditionally_enable::histogram_normalization::HistogramNormalizationDisabled,
+      conditionally_enable::histogram_normalization::HistogramNormalizationEnabled>::type
     {
-      DatabaseDocument(
-        const document_id_t document_id,
-        const frequency_t inverse_magnitude)
-      : document_id(document_id),
-        inverse_magnitude(inverse_magnitude)
+      DatabaseDocument(const document_id_t document_id)
+      : document_id(document_id)
       {}
 
       document_id_t document_id;
-      frequency_t inverse_magnitude;
     };
 
     // This struct conveniently stores a single descriptor.
@@ -765,14 +812,20 @@ compute_word_histogram(
         HistogramEntry(word, frequency));
       m_histogram_counts[word] = 0;
 
-      // Keep track of the histogram's magnitude.
-      normalization.add_term(frequency);
+      if (!std::is_same<HistogramNormalization, histogram_normalization::None>::value)
+      {
+        // Keep track of the histogram's magnitude.
+        normalization.add_term(frequency);
+      }
     }
   }
 
-  // Compute the inverse magnitude.
-  word_histogram.inverse_magnitude =
-    static_cast<frequency_t>(1.0 / normalization.compute_magnitude());
+  if (!std::is_same<HistogramNormalization, histogram_normalization::None>::value)
+  {
+    // Compute the inverse magnitude.
+    word_histogram.set_inverse_magnitude(
+      static_cast<frequency_t>(1.0 / normalization.compute_magnitude()));
+  }
 }
 
 template<
@@ -791,8 +844,13 @@ add_document_to_database(
     throw std::runtime_error(
       "VocabularyTree:add_document_to_database called with existing document_id");
   }
-  const storage_index_t storage_index = m_document_storage.add(
-    DatabaseDocument(new_document_id, word_histogram.inverse_magnitude));
+  
+  DatabaseDocument document(new_document_id);
+  if (!std::is_same<HistogramNormalization, histogram_normalization::None>::value)
+  {
+    document.set_inverse_magnitude(word_histogram.get_inverse_magnitude());
+  }
+  const storage_index_t storage_index = m_document_storage.add(document);
 
   // Update the mapping between document ids and storage indices.
   m_document_to_storage_indices[new_document_id] = storage_index;
@@ -894,8 +952,12 @@ add_words_to_document(
   }
   const storage_index_t storage_index = found_iter->second;
 
-  const frequency_t initial_magnitude = static_cast<frequency_t>(
-    1.0 / m_document_storage[storage_index].inverse_magnitude);
+  frequency_t initial_magnitude = 0;
+  if (!std::is_same<HistogramNormalization, histogram_normalization::None>::value)
+  {
+    initial_magnitude = static_cast<frequency_t>(
+      1.0 / m_document_storage[storage_index].get_inverse_magnitude());
+  }
   HistogramNormalization normalization(initial_magnitude);
 
   for (const auto & histogram_entry : histogram_of_words_to_add.histogram_entries)
@@ -911,9 +973,12 @@ add_words_to_document(
       {
         const frequency_t new_frequency =
           inverted_index_entry.frequency + histogram_entry.frequency;
-        normalization.update_term(
-          inverted_index_entry.frequency,
-          new_frequency);
+        if (!std::is_same<HistogramNormalization, histogram_normalization::None>::value)
+        {
+          normalization.update_term(
+            inverted_index_entry.frequency,
+            new_frequency);
+        }
         inverted_index_entry.frequency = new_frequency;
         found = true;
         break;
@@ -925,12 +990,18 @@ add_words_to_document(
     {
       current_inverted_indices.push_back(
         InvertedIndexEntry(storage_index, histogram_entry.frequency));
-      normalization.add_term(histogram_entry.frequency);
+      if (!std::is_same<HistogramNormalization, histogram_normalization::None>::value)
+      {
+        normalization.add_term(histogram_entry.frequency);
+      }
     }
   }
 
-  m_document_storage[storage_index].inverse_magnitude =
-    static_cast<frequency_t>(1.0 / normalization.compute_magnitude());
+  if (!std::is_same<HistogramNormalization, histogram_normalization::None>::value)
+  {
+    m_document_storage[storage_index].set_inverse_magnitude(
+      static_cast<frequency_t>(1.0 / normalization.compute_magnitude()));
+  }
 }
 
 template<
@@ -952,8 +1023,12 @@ remove_words_from_document(
   }
   const storage_index_t storage_index = found_iter->second;
 
-  const frequency_t initial_magnitude = static_cast<frequency_t>(
-    1.0 / m_document_storage[storage_index].inverse_magnitude);
+  frequency_t initial_magnitude = 0;
+  if (!std::is_same<HistogramNormalization, histogram_normalization::None>::value)
+  {
+    initial_magnitude = static_cast<frequency_t>(
+      1.0 / m_document_storage[storage_index].get_inverse_magnitude());
+  }
   HistogramNormalization normalization(initial_magnitude);
 
   for (const auto & histogram_entry : histogram_of_words_to_remove.histogram_entries)
@@ -969,9 +1044,12 @@ remove_words_from_document(
       {
         const frequency_t new_frequency =
           iter->frequency - histogram_entry.frequency;
-        normalization.update_term(
-          iter->frequency,
-          new_frequency);
+        if (!std::is_same<HistogramNormalization, histogram_normalization::None>::value)
+        {
+          normalization.update_term(
+            iter->frequency,
+            new_frequency);
+        }
         if (new_frequency == 0) // TODO: Make sure that this comparison works.
         {
           current_inverted_indices.erase(iter);
@@ -991,8 +1069,11 @@ remove_words_from_document(
     }
   }
 
-  m_document_storage[storage_index].inverse_magnitude =
-    static_cast<frequency_t>(1.0 / normalization.compute_magnitude());
+  if (!std::is_same<HistogramNormalization, histogram_normalization::None>::value)
+  {
+    m_document_storage[storage_index].set_inverse_magnitude(
+      static_cast<frequency_t>(1.0 / normalization.compute_magnitude()));
+  }
 }
 
 template<
@@ -1016,8 +1097,11 @@ query_database(
 
   for (const auto & histogram_entry : query_word_histogram.histogram_entries)
   {
-    const frequency_t query_frequency =
-      histogram_entry.frequency * query_word_histogram.inverse_magnitude;
+    frequency_t query_frequency = histogram_entry.frequency;
+    if (!std::is_same<HistogramNormalization, histogram_normalization::None>::value)
+    {
+      query_frequency *= query_word_histogram.get_inverse_magnitude();
+    }
 
     const frequency_t idf_weight = get_idf_weight(histogram_entry.word);
 
@@ -1026,9 +1110,11 @@ query_database(
     for (const auto & inverted_index_entry : current_inverted_indices)
     {
       const storage_index_t storage_index = inverted_index_entry.storage_index;
-      const frequency_t frequency =
-        inverted_index_entry.frequency *
-        m_document_storage[storage_index].inverse_magnitude;
+      frequency_t frequency = inverted_index_entry.frequency;
+      if (!std::is_same<HistogramNormalization, histogram_normalization::None>::value)
+      {
+        frequency *= m_document_storage[storage_index].get_inverse_magnitude();
+      }
 
       if (enable_idf_weights)
       {
@@ -1216,7 +1302,8 @@ load_vocabulary_from_file_snavely_vocab_tree_2_format_helper(
 }
 
 template<class VocabularyTree>
-void idf_weights::IdfWeightsEnabled<VocabularyTree>::compute_idf_weights()
+void conditionally_enable::idf_weights::IdfWeightsEnabled<VocabularyTree>::
+compute_idf_weights()
 {
   // IDF weight for a word
   //   = log(# Documents in Database / # Documents with Word)
@@ -1254,7 +1341,8 @@ void idf_weights::IdfWeightsEnabled<VocabularyTree>::compute_idf_weights()
 }
 
 template<class VocabularyTree>
-void idf_weights::IdfWeightsEnabled<VocabularyTree>::reset_idf_weights()
+void conditionally_enable::idf_weights::IdfWeightsEnabled<VocabularyTree>::
+reset_idf_weights()
 {
   const VocabularyTree * voc_tree = static_cast<const VocabularyTree *>(this);
 
