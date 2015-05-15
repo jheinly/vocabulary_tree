@@ -14,6 +14,7 @@ cmh_add_library_module(
   src/vocabulary_tree/vocabulary_tree_descriptor_types.cpp
   src/vocabulary_tree/vocabulary_tree_histogram_distance_types.h
   src/vocabulary_tree/vocabulary_tree_histogram_normalization_types.h
+  src/vocabulary_tree/vocabulary_tree_structs.h
   src/vocabulary_tree/vocabulary_tree_types.h
   src/vocabulary_tree/vocabulary_tree_types.cpp
 )

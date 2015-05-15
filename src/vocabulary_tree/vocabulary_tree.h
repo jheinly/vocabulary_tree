@@ -3,6 +3,7 @@
 #define VOCABULARY_TREE_H
 
 #include <vocabulary_tree/vocabulary_tree_types.h>
+#include <vocabulary_tree/vocabulary_tree_structs.h>
 #include <vocabulary_tree/vocabulary_tree_conditionally_enable.h>
 #include <vocabulary_tree/vocabulary_tree_descriptor_types.h>
 #include <vocabulary_tree/vocabulary_tree_histogram_normalization_types.h>
@@ -62,70 +63,83 @@ template<
   typename HistogramDistance = histogram_distance::Min,
   bool enable_document_modification = true,
   bool enable_idf_weights = true>
-class VocabularyTree : public VocabularyTreeTypes,
+class VocabularyTree :
+  ////////////////////////////////////////////////////////////////////////////
+  // Inherited Classes
+
+  // Structs used by the vocabulary tree.
+  public VocabularyTreeStructs<
+    Descriptor,
+    HistogramNormalization,
+    HistogramDistance,
+    enable_document_modification,
+    enable_idf_weights>,
+  
+  // Whether or not document modification is enabled.
   public std::conditional<
     enable_document_modification,
     conditionally_enable::document_modification::DocumentModificationEnabled<
-      VocabularyTree<Descriptor, HistogramNormalization, HistogramDistance, true, enable_idf_weights>, Descriptor>,
+      VocabularyTree<
+        Descriptor,
+        HistogramNormalization,
+        HistogramDistance,
+        true,
+        enable_idf_weights>,
+      VocabularyTreeStructs<
+        Descriptor,
+        HistogramNormalization,
+        HistogramDistance,
+        true,
+        enable_idf_weights>,
+      Descriptor,
+      HistogramNormalization,
+      HistogramDistance,
+      true,
+      enable_idf_weights>,
     conditionally_enable::document_modification::DocumentModificationDisabled>::type,
+  
+  // Whether or not IDF weights are enabled.
   public std::conditional<
     enable_idf_weights,
     conditionally_enable::idf_weights::IdfWeightsEnabled<
-      VocabularyTree<Descriptor, HistogramNormalization, HistogramDistance, enable_document_modification, true> >,
+      VocabularyTree<
+        Descriptor,
+        HistogramNormalization,
+        HistogramDistance,
+        enable_document_modification,
+        true> >,
     conditionally_enable::idf_weights::IdfWeightsDisabled>::type
 {
+  //////////////////////////////////////////////////////////////////////////////
+  // Friend Classes (helps to conditionally enable vocabulary tree functions)
+
   friend class conditionally_enable::document_modification::DocumentModificationEnabled<
-    VocabularyTree<Descriptor, HistogramNormalization, HistogramDistance, true, enable_idf_weights>, Descriptor>;
+    VocabularyTree<
+      Descriptor,
+      HistogramNormalization,
+      HistogramDistance,
+      true,
+      enable_idf_weights>,
+    VocabularyTreeStructs<
+      Descriptor,
+      HistogramNormalization,
+      HistogramDistance,
+      true,
+      enable_idf_weights>,
+    Descriptor,
+    HistogramNormalization,
+    HistogramDistance,
+    true,
+    enable_idf_weights>;
   friend class conditionally_enable::idf_weights::IdfWeightsEnabled<
-    VocabularyTree<Descriptor, HistogramNormalization, HistogramDistance, enable_document_modification, true> >;
+    VocabularyTree<
+      Descriptor,
+      HistogramNormalization,
+      HistogramDistance,
+      enable_document_modification,
+      true> >;
 
   public:
-    ////////////////////////////////////////////////////////////////////////////
-    // Public Structures
-
-    // This struct stores the occurrence frequency for a given word. Several of
-    // these entries are combined to form a histogram of words (where each entry
-    // represents one dimension of the histogram).
-    struct HistogramEntry
-    {
-      HistogramEntry(
-        const word_t word,
-        const frequency_t frequency)
-      : word(word),
-        frequency(frequency)
-      {}
-
-      word_t word;
-      frequency_t frequency;
-    };
-
-    // This struct stores a histogram of words. Specifically, it contains a list
-    // of words, and their occurrence frequency (as HistogramEntry objects). The
-    // inverse magnitude of the histogram is also stored for use in histogram
-    // normalization.
-    struct WordHistogram : public std::conditional<
-      std::is_same<HistogramNormalization, histogram_normalization::None>::value,
-      conditionally_enable::inverse_magnitudes::InverseMagnitudesDisabled,
-      conditionally_enable::inverse_magnitudes::InverseMagnitudesEnabled>::type
-    {
-      std::vector<HistogramEntry> histogram_entries;
-    };
-
-    // This struct a single query result, in that it contains a document's ID,
-    // (which had previously been stored in the database) as well as its score
-    // with respect to the query document. A higher score indicates a better
-    // match.
-    struct QueryResult
-    {
-      static inline bool greater(
-        const QueryResult & a,
-        const QueryResult & b)
-      { return a.score > b.score; }
-
-      document_id_t document_id;
-      frequency_t score;
-    };
-
     ////////////////////////////////////////////////////////////////////////////
     // Public Initialization & Destruction
 
@@ -210,70 +224,6 @@ class VocabularyTree : public VocabularyTreeTypes,
     { return m_document_storage.num_entries(); }
 
   private:
-    ////////////////////////////////////////////////////////////////////////////
-    // Private Structures
-
-    // This struct represents a node (either an iterior or a leaf) within the
-    // vocabulary tree. Each node keeps track of its children (if it is an
-    // interior node) or the word that it represents (if it is a leaf node).
-    // NOTE: If this is a leaf node, then num_children will equal zero and word
-    //       will contain the word index for this node. Otherwise, num_children
-    //       will be non-zero and starting_index_for_children is the index of
-    //       the children nodes within m_nodes as well as the starting index for
-    //       the children's descriptors within m_descriptors.
-    struct Node
-    {
-      Node()
-      : starting_index_for_children(InvalidIndex),
-        num_children(InvalidIndex),
-        word(InvalidWord)
-      {}
-
-      index_t starting_index_for_children;
-      index_t num_children;
-      word_t word;
-    };
-
-    // This struct stores the occurrence frequency of a particular word for a
-    // document in the database. Each word has its own list of inverted index
-    // entries (m_word_inverted_indices), and each document is assigned a unique
-    // storage index.
-    struct InvertedIndexEntry
-    {
-      InvertedIndexEntry(
-        const storage_index_t storage_index,
-        const frequency_t frequency)
-      : storage_index(storage_index),
-        frequency(frequency)
-      {}
-
-      storage_index_t storage_index;
-      frequency_t frequency;
-    };
-
-    // This struct represents the existance of a document stored in the
-    // database. A list of database documents is maintained in this class
-    // (m_document_storage), and each document is assigned a unique storage
-    // index. This struct stores the inverse magnitude of the histogram of words
-    // with which it is currently associated.
-    struct DatabaseDocument : public std::conditional<
-      std::is_same<HistogramNormalization, histogram_normalization::None>::value,
-      conditionally_enable::inverse_magnitudes::InverseMagnitudesDisabled,
-      conditionally_enable::inverse_magnitudes::InverseMagnitudesEnabled>::type
-    {
-      DatabaseDocument(const document_id_t document_id)
-      : document_id(document_id)
-      {}
-
-      document_id_t document_id;
-    };
-
-    // This struct conveniently stores a single descriptor.
-    struct DescriptorStorage
-    {
-      typename Descriptor::DimensionType values[Descriptor::NumDimensions];
-    };
-
     ////////////////////////////////////////////////////////////////////////////
     // Private Operators
 
@@ -715,8 +665,22 @@ compute_word_histogram(
   if (!std::is_same<HistogramNormalization, histogram_normalization::None>::value)
   {
     // Compute the inverse magnitude.
-    word_histogram.set_inverse_magnitude(
-      static_cast<frequency_t>(1.0 / normalization.compute_magnitude()));
+    const frequency_t inverse_magnitude =
+      static_cast<frequency_t>(1.0 / normalization.compute_magnitude());
+
+    if (enable_document_modification)
+    {
+      word_histogram.set_inverse_magnitude(inverse_magnitude);
+    }
+    else
+    {
+      // If document modification is disabled, then pre-multiply the histogram
+      // by its inverse magnitude (as the magnitude cannot be changed later).
+      for (auto & histogram_entry : word_histogram.histogram_entries)
+      {
+        histogram_entry.frequency *= inverse_magnitude;
+      }
+    }
   }
 }
 
@@ -883,8 +847,10 @@ query_database(
     for (const auto & inverted_index_entry : current_inverted_indices)
     {
       const storage_index_t storage_index = inverted_index_entry.storage_index;
+      
       frequency_t frequency = inverted_index_entry.frequency;
-      if (!std::is_same<HistogramNormalization, histogram_normalization::None>::value)
+      if (enable_document_modification &&
+        !std::is_same<HistogramNormalization, histogram_normalization::None>::value)
       {
         frequency *= m_document_storage[storage_index].get_inverse_magnitude();
       }
@@ -1089,255 +1055,6 @@ load_vocabulary_from_file_snavely_vocab_tree_2_format_helper(
       float count = 0;
       fread(&count, sizeof(float), 1, file);
     }
-  }
-}
-
-template<
-  class VocabularyTree,
-  typename Descriptor>
-void conditionally_enable::document_modification::DocumentModificationEnabled<
-  VocabularyTree,
-  Descriptor>::
-add_words_to_document(
-  const typename Descriptor::DimensionType * const descriptors_to_add,
-  const VocabularyTreeTypes::index_t num_descriptors_to_add,
-  const VocabularyTreeTypes::document_id_t document_id)
-{
-  const VocabularyTree * vt = static_cast<const VocabularyTree *>(this);
-
-  vt->compute_words(
-    descriptors_to_add,
-    num_descriptors_to_add,
-    m_words);
-  vt->compute_word_histogram(
-    m_words,
-    m_word_histogram);
-  vt->add_words_to_document(
-    m_word_histogram,
-    document_id);
-}
-
-template<
-  class VocabularyTree,
-  typename Descriptor>
-void conditionally_enable::document_modification::DocumentModificationEnabled<
-  VocabularyTree,
-  Descriptor>::
-remove_words_from_document(
-  const typename Descriptor::DimensionType * const descriptors_to_remove,
-  const VocabularyTreeTypes::index_t num_descriptors_to_remove,
-  const VocabularyTreeTypes::document_id_t document_id)
-{
-  const VocabularyTree * vt = static_cast<const VocabularyTree *>(this);
-
-  vt->compute_words(
-    descriptors_to_remove,
-    num_descriptors_to_remove,
-    m_words);
-  vt->compute_word_histogram(
-    m_words,
-    m_word_histogram);
-  vt->remove_words_from_document(
-    m_word_histogram,
-    document_id);
-}
-
-template<
-  class VocabularyTree,
-  typename Descriptor>
-void conditionally_enable::document_modification::DocumentModificationEnabled<
-  VocabularyTree,
-  Descriptor>::
-add_words_to_document(
-  const typename VocabularyTree::WordHistogram & histogram_of_words_to_add,
-  const VocabularyTreeTypes::document_id_t document_id)
-{
-  const VocabularyTree * vt = static_cast<const VocabularyTree *>(this);
-
-  // Find the storage index for this document.
-  const auto & found_iter = vt->m_document_to_storage_indices.find(document_id);
-  if (found_iter == vt->m_document_to_storage_indices.end())
-  {
-    throw std::runtime_error(
-      "VocabularyTree::add_words_to_document called with non-existent document_id");
-  }
-  const storage_index_t storage_index = found_iter->second;
-
-  frequency_t initial_magnitude = 0;
-  if (!std::is_same<HistogramNormalization, histogram_normalization::None>::value)
-  {
-    initial_magnitude = static_cast<frequency_t>(
-      1.0 / vt->m_document_storage[storage_index].get_inverse_magnitude());
-  }
-  HistogramNormalization normalization(initial_magnitude);
-
-  for (const auto & histogram_entry : histogram_of_words_to_add.histogram_entries)
-  {
-    auto & current_inverted_indices =
-      vt->m_word_inverted_indices[histogram_entry.word];
-    bool found = false;
-
-    // Search for an existing entry in the inverted index.
-    for (auto & inverted_index_entry : current_inverted_indices)
-    {
-      if (inverted_index_entry.storage_index == storage_index)
-      {
-        const frequency_t new_frequency =
-          inverted_index_entry.frequency + histogram_entry.frequency;
-        if (!std::is_same<HistogramNormalization, histogram_normalization::None>::value)
-        {
-          normalization.update_term(
-            inverted_index_entry.frequency,
-            new_frequency);
-        }
-        inverted_index_entry.frequency = new_frequency;
-        found = true;
-        break;
-      }
-    }
-    // If an existing entry was not found, create a new inverted index entry for
-    // this word-document pair.
-    if (!found)
-    {
-      current_inverted_indices.push_back(
-        InvertedIndexEntry(storage_index, histogram_entry.frequency));
-      if (!std::is_same<HistogramNormalization, histogram_normalization::None>::value)
-      {
-        normalization.add_term(histogram_entry.frequency);
-      }
-    }
-  }
-
-  if (!std::is_same<HistogramNormalization, histogram_normalization::None>::value)
-  {
-    vt->m_document_storage[storage_index].set_inverse_magnitude(
-      static_cast<frequency_t>(1.0 / normalization.compute_magnitude()));
-  }
-}
-
-template<
-  class VocabularyTree,
-  typename Descriptor>
-void conditionally_enable::document_modification::DocumentModificationEnabled<
-  VocabularyTree,
-  Descriptor>::
-remove_words_from_document(
-  const typename VocabularyTree::WordHistogram & histogram_of_words_to_remove,
-  const VocabularyTreeTypes::document_id_t document_id)
-{
-  const VocabularyTree * vt = static_cast<const VocabularyTree *>(this);
-
-  // Find the storage index for this document.
-  const auto & found_iter = vt->m_document_to_storage_indices.find(document_id);
-  if (found_iter == vt->m_document_to_storage_indices.end())
-  {
-    throw std::runtime_error(
-      "VocabularyTree::remove_words_from_document called with non-existent document_id");
-  }
-  const storage_index_t storage_index = found_iter->second;
-
-  frequency_t initial_magnitude = 0;
-  if (!std::is_same<HistogramNormalization, histogram_normalization::None>::value)
-  {
-    initial_magnitude = static_cast<frequency_t>(
-      1.0 / vt->m_document_storage[storage_index].get_inverse_magnitude());
-  }
-  HistogramNormalization normalization(initial_magnitude);
-
-  for (const auto & histogram_entry : histogram_of_words_to_remove.histogram_entries)
-  {
-    auto & current_inverted_indices =
-      vt->m_word_inverted_indices[histogram_entry.word];
-    bool found = false;
-    for (auto iter = current_inverted_indices.begin();
-      iter != current_inverted_indices.end();
-      ++iter)
-    {
-      if (iter->storage_index == storage_index)
-      {
-        const frequency_t new_frequency =
-          iter->frequency - histogram_entry.frequency;
-        if (!std::is_same<HistogramNormalization, histogram_normalization::None>::value)
-        {
-          normalization.update_term(
-            iter->frequency,
-            new_frequency);
-        }
-        if (new_frequency == 0) // TODO: Make sure that this comparison works.
-        {
-          current_inverted_indices.erase(iter);
-        }
-        else
-        {
-          iter->frequency = new_frequency;
-        }
-        found = true;
-        break;
-      }
-    }
-    if (!found)
-    {
-      throw std::runtime_error(
-        "VocabularyTree::remove_words_from_document could not find inverted index entry for document");
-    }
-  }
-
-  if (!std::is_same<HistogramNormalization, histogram_normalization::None>::value)
-  {
-    vt->m_document_storage[storage_index].set_inverse_magnitude(
-      static_cast<frequency_t>(1.0 / normalization.compute_magnitude()));
-  }
-}
-
-template<class VocabularyTree>
-void conditionally_enable::idf_weights::IdfWeightsEnabled<VocabularyTree>::
-compute_idf_weights()
-{
-  // IDF weight for a word
-  //   = log(# Documents in Database / # Documents with Word)
-  //   = log(# Documents in Database) - log(# Documents with Word)
-  // By splitting the computation into its subtraction form, we avoid a division
-  // operation on each iteration.
-
-  const VocabularyTree * vt = static_cast<const VocabularyTree *>(this);
-
-  // If there are no documents in the database, reset the idf weights.
-  if (vt->num_documents_in_database() == 0)
-  {
-    reset_idf_weights();
-    return;
-  }
-
-  const VocabularyTree::frequency_t database_weight = log(
-    static_cast<VocabularyTree::frequency_t>(vt->num_documents_in_database()));
-
-  for (VocabularyTree::index_t i = 0; i < vt->m_num_words_in_vocabulary; ++i)
-  {
-    const VocabularyTree::index_t num_documents_with_word =
-      static_cast<VocabularyTree::index_t>(vt->m_word_inverted_indices[i].size());
-    if (num_documents_with_word > 0)
-    {
-      const VocabularyTree::frequency_t word_weight =
-        log(static_cast<VocabularyTree::frequency_t>(num_documents_with_word));
-      m_word_idf_weights[i] = database_weight - word_weight;
-    }
-    else
-    {
-      m_word_idf_weights[i] = 0;
-    }
-  }
-}
-
-template<class VocabularyTree>
-void conditionally_enable::idf_weights::IdfWeightsEnabled<VocabularyTree>::
-reset_idf_weights()
-{
-  const VocabularyTree * vt = static_cast<const VocabularyTree *>(this);
-
-  m_word_idf_weights.resize(vt->m_num_words_in_vocabulary);
-  for (VocabularyTree::index_t i = 0; i < vt->m_num_words_in_vocabulary; ++i)
-  {
-    m_word_idf_weights[i] = 1;
   }
 }
 
