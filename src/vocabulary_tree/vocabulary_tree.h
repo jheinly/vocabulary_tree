@@ -27,6 +27,7 @@ NOTE: For ease of programming, define the class in the following manner:
           vocabulary_tree::descriptor::Sift,
           vocabulary_tree::histogram_normalization::L1,
           vocabulary_tree::histogram_distance::Min,
+          true,
           true> VocTree;
       This allows an instance of the class to be declared as:
         VocTree voc_tree;
@@ -49,8 +50,6 @@ TODO: Make sure that inverse_magnitude cannot be zero, as that would result in
       divide-by-zero errors. Therefore, enforce that a document has a non-zero
       number of words.
 
-TODO: Template over whether or not document modification is allowed.
-
 TODO: Add support for threading (making the functions thread-safe). Ideally,
       support would be enabled via a template argument.
 */
@@ -61,16 +60,24 @@ template<
   typename Descriptor = descriptor::Sift,
   typename HistogramNormalization = histogram_normalization::L1,
   typename HistogramDistance = histogram_distance::Min,
+  bool enable_document_modification = true,
   bool enable_idf_weights = true>
 class VocabularyTree : public VocabularyTreeTypes,
   public std::conditional<
+    enable_document_modification,
+    conditionally_enable::document_modification::DocumentModificationEnabled<
+      VocabularyTree<Descriptor, HistogramNormalization, HistogramDistance, true, enable_idf_weights>, Descriptor>,
+    conditionally_enable::document_modification::DocumentModificationDisabled>::type,
+  public std::conditional<
     enable_idf_weights,
     conditionally_enable::idf_weights::IdfWeightsEnabled<
-      VocabularyTree<Descriptor, HistogramNormalization, HistogramDistance, true> >,
+      VocabularyTree<Descriptor, HistogramNormalization, HistogramDistance, enable_document_modification, true> >,
     conditionally_enable::idf_weights::IdfWeightsDisabled>::type
 {
+  friend class conditionally_enable::document_modification::DocumentModificationEnabled<
+    VocabularyTree<Descriptor, HistogramNormalization, HistogramDistance, true, enable_idf_weights>, Descriptor>;
   friend class conditionally_enable::idf_weights::IdfWeightsEnabled<
-    VocabularyTree<Descriptor, HistogramNormalization, HistogramDistance, true> >;
+    VocabularyTree<Descriptor, HistogramNormalization, HistogramDistance, enable_document_modification, true> >;
 
   public:
     ////////////////////////////////////////////////////////////////////////////
@@ -98,8 +105,8 @@ class VocabularyTree : public VocabularyTreeTypes,
     // normalization.
     struct WordHistogram : public std::conditional<
       std::is_same<HistogramNormalization, histogram_normalization::None>::value,
-      conditionally_enable::histogram_normalization::HistogramNormalizationDisabled,
-      conditionally_enable::histogram_normalization::HistogramNormalizationEnabled>::type
+      conditionally_enable::inverse_magnitudes::InverseMagnitudesDisabled,
+      conditionally_enable::inverse_magnitudes::InverseMagnitudesEnabled>::type
     {
       std::vector<HistogramEntry> histogram_entries;
     };
@@ -150,20 +157,6 @@ class VocabularyTree : public VocabularyTreeTypes,
       const index_t num_descriptors,
       const document_id_t document_id);
 
-    // Add new words to an existing document in the database.
-    void add_words_to_document(
-      const typename Descriptor::DimensionType * const descriptors_to_add,
-      const index_t num_descriptors_to_add,
-      const document_id_t document_id);
-
-    // Remove words from an existing document in the database.
-    // NOTE: If all of the words for a document are removed, the document will
-    //       not automatically be removed from the database.
-    void remove_words_from_document(
-      const typename Descriptor::DimensionType * const descriptors_to_remove,
-      const index_t num_descriptors_to_remove,
-      const document_id_t document_id);
-
     // Query the database by returning a list of the most similar documents.
     void query_database(
       const typename Descriptor::DimensionType * const query_descriptors,
@@ -198,18 +191,6 @@ class VocabularyTree : public VocabularyTreeTypes,
     // Test whether a document is currently stored in the database.
     bool is_document_in_database(
       const document_id_t document_id) const;
-
-    // Add new words to an existing document in the database.
-    void add_words_to_document(
-      const WordHistogram & histogram_of_words_to_add,
-      const document_id_t document_id);
-
-    // Remove words from an existing document in the database.
-    // NOTE: If all of the words for a document are removed, the document will
-    //       not automatically be removed from the database.
-    void remove_words_from_document(
-      const WordHistogram & histogram_of_words_to_remove,
-      const document_id_t document_id);
 
     // Query the database by returning a list of the most similar documents.
     void query_database(
@@ -277,8 +258,8 @@ class VocabularyTree : public VocabularyTreeTypes,
     // with which it is currently associated.
     struct DatabaseDocument : public std::conditional<
       std::is_same<HistogramNormalization, histogram_normalization::None>::value,
-      conditionally_enable::histogram_normalization::HistogramNormalizationDisabled,
-      conditionally_enable::histogram_normalization::HistogramNormalizationEnabled>::type
+      conditionally_enable::inverse_magnitudes::InverseMagnitudesDisabled,
+      conditionally_enable::inverse_magnitudes::InverseMagnitudesEnabled>::type
     {
       DatabaseDocument(const document_id_t document_id)
       : document_id(document_id)
@@ -367,8 +348,14 @@ template<
   typename Descriptor,
   typename HistogramNormalization,
   typename HistogramDistance,
+  bool enable_document_modification,
   bool enable_idf_weights>
-VocabularyTree<Descriptor, HistogramNormalization, HistogramDistance, enable_idf_weights>::
+VocabularyTree<
+  Descriptor,
+  HistogramNormalization,
+  HistogramDistance,
+  enable_document_modification,
+  enable_idf_weights>::
 VocabularyTree()
 : m_num_words_in_vocabulary(0)
 {}
@@ -377,8 +364,14 @@ template<
   typename Descriptor,
   typename HistogramNormalization,
   typename HistogramDistance,
+  bool enable_document_modification,
   bool enable_idf_weights>
-VocabularyTree<Descriptor, HistogramNormalization, HistogramDistance, enable_idf_weights>::
+VocabularyTree<
+  Descriptor,
+  HistogramNormalization,
+  HistogramDistance,
+  enable_document_modification,
+  enable_idf_weights>::
 ~VocabularyTree()
 {
   m_descriptors.clear();
@@ -396,8 +389,14 @@ template<
   typename Descriptor,
   typename HistogramNormalization,
   typename HistogramDistance,
+  bool enable_document_modification,
   bool enable_idf_weights>
-void VocabularyTree<Descriptor, HistogramNormalization, HistogramDistance, enable_idf_weights>::
+void VocabularyTree<
+  Descriptor,
+  HistogramNormalization,
+  HistogramDistance,
+  enable_document_modification,
+  enable_idf_weights>::
 load_vocabulary_from_file_snavely_vocab_tree_2_format(
   const std::string & vocabulary_file_path)
 {
@@ -531,8 +530,14 @@ template<
   typename Descriptor,
   typename HistogramNormalization,
   typename HistogramDistance,
+  bool enable_document_modification,
   bool enable_idf_weights>
-void VocabularyTree<Descriptor, HistogramNormalization, HistogramDistance, enable_idf_weights>::
+void VocabularyTree<
+  Descriptor,
+  HistogramNormalization,
+  HistogramDistance,
+  enable_document_modification,
+  enable_idf_weights>::
 add_document_to_database(
   const typename Descriptor::DimensionType * const descriptors,
   const index_t num_descriptors,
@@ -554,8 +559,14 @@ template<
   typename Descriptor,
   typename HistogramNormalization,
   typename HistogramDistance,
+  bool enable_document_modification,
   bool enable_idf_weights>
-void VocabularyTree<Descriptor, HistogramNormalization, HistogramDistance, enable_idf_weights>::
+void VocabularyTree<
+  Descriptor,
+  HistogramNormalization,
+  HistogramDistance,
+  enable_document_modification,
+  enable_idf_weights>::
 remove_document_from_database(
   const typename Descriptor::DimensionType * const descriptors,
   const index_t num_descriptors,
@@ -577,54 +588,14 @@ template<
   typename Descriptor,
   typename HistogramNormalization,
   typename HistogramDistance,
+  bool enable_document_modification,
   bool enable_idf_weights>
-void VocabularyTree<Descriptor, HistogramNormalization, HistogramDistance, enable_idf_weights>::
-add_words_to_document(
-  const typename Descriptor::DimensionType * const descriptors_to_add,
-  const index_t num_descriptors_to_add,
-  const document_id_t document_id)
-{
-  compute_words(
-    descriptors_to_add,
-    num_descriptors_to_add,
-    m_words);
-  compute_word_histogram(
-    m_words,
-    m_word_histogram);
-  add_words_to_document(
-    m_word_histogram,
-    document_id);
-}
-
-template<
-  typename Descriptor,
-  typename HistogramNormalization,
-  typename HistogramDistance,
-  bool enable_idf_weights>
-void VocabularyTree<Descriptor, HistogramNormalization, HistogramDistance, enable_idf_weights>::
-remove_words_from_document(
-  const typename Descriptor::DimensionType * const descriptors_to_remove,
-  const index_t num_descriptors_to_remove,
-  const document_id_t document_id)
-{
-  compute_words(
-    descriptors_to_remove,
-    num_descriptors_to_remove,
-    m_words);
-  compute_word_histogram(
-    m_words,
-    m_word_histogram);
-  remove_words_from_document(
-    m_word_histogram,
-    document_id);
-}
-
-template<
-  typename Descriptor,
-  typename HistogramNormalization,
-  typename HistogramDistance,
-  bool enable_idf_weights>
-void VocabularyTree<Descriptor, HistogramNormalization, HistogramDistance, enable_idf_weights>::
+void VocabularyTree<
+  Descriptor,
+  HistogramNormalization,
+  HistogramDistance,
+  enable_document_modification,
+  enable_idf_weights>::
 query_database(
   const typename Descriptor::DimensionType * const query_descriptors,
   const index_t num_query_descriptors,
@@ -648,8 +619,14 @@ template<
   typename Descriptor,
   typename HistogramNormalization,
   typename HistogramDistance,
+  bool enable_document_modification,
   bool enable_idf_weights>
-void VocabularyTree<Descriptor, HistogramNormalization, HistogramDistance, enable_idf_weights>::
+void VocabularyTree<
+  Descriptor,
+  HistogramNormalization,
+  HistogramDistance,
+  enable_document_modification,
+  enable_idf_weights>::
 compute_words(
   const typename Descriptor::DimensionType * const descriptors,
   const index_t num_descriptors,
@@ -691,8 +668,14 @@ template<
   typename Descriptor,
   typename HistogramNormalization,
   typename HistogramDistance,
+  bool enable_document_modification,
   bool enable_idf_weights>
-void VocabularyTree<Descriptor, HistogramNormalization, HistogramDistance, enable_idf_weights>::
+void VocabularyTree<
+  Descriptor,
+  HistogramNormalization,
+  HistogramDistance,
+  enable_document_modification,
+  enable_idf_weights>::
 compute_word_histogram(
   const std::vector<word_t> & words,
   WordHistogram & word_histogram) const
@@ -741,8 +724,14 @@ template<
   typename Descriptor,
   typename HistogramNormalization,
   typename HistogramDistance,
+  bool enable_document_modification,
   bool enable_idf_weights>
-void VocabularyTree<Descriptor, HistogramNormalization, HistogramDistance, enable_idf_weights>::
+void VocabularyTree<
+  Descriptor,
+  HistogramNormalization,
+  HistogramDistance,
+  enable_document_modification,
+  enable_idf_weights>::
 add_document_to_database(
   const WordHistogram & word_histogram,
   const document_id_t new_document_id)
@@ -778,8 +767,14 @@ template<
   typename Descriptor,
   typename HistogramNormalization,
   typename HistogramDistance,
+  bool enable_document_modification,
   bool enable_idf_weights>
-void VocabularyTree<Descriptor, HistogramNormalization, HistogramDistance, enable_idf_weights>::
+void VocabularyTree<
+  Descriptor,
+  HistogramNormalization,
+  HistogramDistance,
+  enable_document_modification,
+  enable_idf_weights>::
 remove_document_from_database(
   const WordHistogram & word_histogram,
   const document_id_t document_id)
@@ -826,8 +821,14 @@ template<
   typename Descriptor,
   typename HistogramNormalization,
   typename HistogramDistance,
+  bool enable_document_modification,
   bool enable_idf_weights>
-bool VocabularyTree<Descriptor, HistogramNormalization, HistogramDistance, enable_idf_weights>::
+bool VocabularyTree<
+  Descriptor,
+  HistogramNormalization,
+  HistogramDistance,
+  enable_document_modification,
+  enable_idf_weights>::
 is_document_in_database(
   const document_id_t document_id) const
 {
@@ -846,151 +847,14 @@ template<
   typename Descriptor,
   typename HistogramNormalization,
   typename HistogramDistance,
+  bool enable_document_modification,
   bool enable_idf_weights>
-void VocabularyTree<Descriptor, HistogramNormalization, HistogramDistance, enable_idf_weights>::
-add_words_to_document(
-  const WordHistogram & histogram_of_words_to_add,
-  const document_id_t document_id)
-{
-  // Find the storage index for this document.
-  const auto & found_iter = m_document_to_storage_indices.find(document_id);
-  if (found_iter == m_document_to_storage_indices.end())
-  {
-    throw std::runtime_error(
-      "VocabularyTree::add_words_to_document called with non-existent document_id");
-  }
-  const storage_index_t storage_index = found_iter->second;
-
-  frequency_t initial_magnitude = 0;
-  if (!std::is_same<HistogramNormalization, histogram_normalization::None>::value)
-  {
-    initial_magnitude = static_cast<frequency_t>(
-      1.0 / m_document_storage[storage_index].get_inverse_magnitude());
-  }
-  HistogramNormalization normalization(initial_magnitude);
-
-  for (const auto & histogram_entry : histogram_of_words_to_add.histogram_entries)
-  {
-    auto & current_inverted_indices =
-      m_word_inverted_indices[histogram_entry.word];
-    bool found = false;
-
-    // Search for an existing entry in the inverted index.
-    for (auto & inverted_index_entry : current_inverted_indices)
-    {
-      if (inverted_index_entry.storage_index == storage_index)
-      {
-        const frequency_t new_frequency =
-          inverted_index_entry.frequency + histogram_entry.frequency;
-        if (!std::is_same<HistogramNormalization, histogram_normalization::None>::value)
-        {
-          normalization.update_term(
-            inverted_index_entry.frequency,
-            new_frequency);
-        }
-        inverted_index_entry.frequency = new_frequency;
-        found = true;
-        break;
-      }
-    }
-    // If an existing entry was not found, create a new inverted index entry for
-    // this word-document pair.
-    if (!found)
-    {
-      current_inverted_indices.push_back(
-        InvertedIndexEntry(storage_index, histogram_entry.frequency));
-      if (!std::is_same<HistogramNormalization, histogram_normalization::None>::value)
-      {
-        normalization.add_term(histogram_entry.frequency);
-      }
-    }
-  }
-
-  if (!std::is_same<HistogramNormalization, histogram_normalization::None>::value)
-  {
-    m_document_storage[storage_index].set_inverse_magnitude(
-      static_cast<frequency_t>(1.0 / normalization.compute_magnitude()));
-  }
-}
-
-template<
-  typename Descriptor,
-  typename HistogramNormalization,
-  typename HistogramDistance,
-  bool enable_idf_weights>
-void VocabularyTree<Descriptor, HistogramNormalization, HistogramDistance, enable_idf_weights>::
-remove_words_from_document(
-  const WordHistogram & histogram_of_words_to_remove,
-  const document_id_t document_id)
-{
-  // Find the storage index for this document.
-  const auto & found_iter = m_document_to_storage_indices.find(document_id);
-  if (found_iter == m_document_to_storage_indices.end())
-  {
-    throw std::runtime_error(
-      "VocabularyTree::remove_words_from_document called with non-existent document_id");
-  }
-  const storage_index_t storage_index = found_iter->second;
-
-  frequency_t initial_magnitude = 0;
-  if (!std::is_same<HistogramNormalization, histogram_normalization::None>::value)
-  {
-    initial_magnitude = static_cast<frequency_t>(
-      1.0 / m_document_storage[storage_index].get_inverse_magnitude());
-  }
-  HistogramNormalization normalization(initial_magnitude);
-
-  for (const auto & histogram_entry : histogram_of_words_to_remove.histogram_entries)
-  {
-    auto & current_inverted_indices =
-      m_word_inverted_indices[histogram_entry.word];
-    bool found = false;
-    for (auto iter = current_inverted_indices.begin();
-      iter != current_inverted_indices.end();
-      ++iter)
-    {
-      if (iter->storage_index == storage_index)
-      {
-        const frequency_t new_frequency =
-          iter->frequency - histogram_entry.frequency;
-        if (!std::is_same<HistogramNormalization, histogram_normalization::None>::value)
-        {
-          normalization.update_term(
-            iter->frequency,
-            new_frequency);
-        }
-        if (new_frequency == 0) // TODO: Make sure that this comparison works.
-        {
-          current_inverted_indices.erase(iter);
-        }
-        else
-        {
-          iter->frequency = new_frequency;
-        }
-        found = true;
-        break;
-      }
-    }
-    if (!found)
-    {
-      throw std::runtime_error(
-        "VocabularyTree::remove_words_from_document could not find inverted index entry for document");
-    }
-  }
-
-  if (!std::is_same<HistogramNormalization, histogram_normalization::None>::value)
-  {
-    m_document_storage[storage_index].set_inverse_magnitude(
-      static_cast<frequency_t>(1.0 / normalization.compute_magnitude()));
-  }
-}
-
-template<
-  typename Descriptor,
-  typename HistogramNormalization,
-  typename HistogramDistance,
-  bool enable_idf_weights>
-void VocabularyTree<Descriptor, HistogramNormalization, HistogramDistance, enable_idf_weights>::
+void VocabularyTree<
+  Descriptor,
+  HistogramNormalization,
+  HistogramDistance,
+  enable_document_modification,
+  enable_idf_weights>::
 query_database(
   const WordHistogram & query_word_histogram,
   const index_t max_num_results,
@@ -1072,8 +936,14 @@ template<
   typename Descriptor,
   typename HistogramNormalization,
   typename HistogramDistance,
+  bool enable_document_modification,
   bool enable_idf_weights>
-void VocabularyTree<Descriptor, HistogramNormalization, HistogramDistance, enable_idf_weights>::
+void VocabularyTree<
+  Descriptor,
+  HistogramNormalization,
+  HistogramDistance,
+  enable_document_modification,
+  enable_idf_weights>::
 clear_database()
 {
   m_word_inverted_indices.resize(m_num_words_in_vocabulary);
@@ -1087,8 +957,14 @@ template<
   typename Descriptor,
   typename HistogramNormalization,
   typename HistogramDistance,
+  bool enable_document_modification,
   bool enable_idf_weights>
-VocabularyTreeTypes::index_t VocabularyTree<Descriptor, HistogramNormalization, HistogramDistance, enable_idf_weights>::
+VocabularyTreeTypes::index_t VocabularyTree<
+  Descriptor,
+  HistogramNormalization,
+  HistogramDistance,
+  enable_document_modification,
+  enable_idf_weights>::
 compute_best_child_node(
   const typename Descriptor::DimensionType * const descriptor,
   const Node & node) const
@@ -1118,8 +994,14 @@ template<
   typename Descriptor,
   typename HistogramNormalization,
   typename HistogramDistance,
+  bool enable_document_modification,
   bool enable_idf_weights>
-void VocabularyTree<Descriptor, HistogramNormalization, HistogramDistance, enable_idf_weights>::
+void VocabularyTree<
+  Descriptor,
+  HistogramNormalization,
+  HistogramDistance,
+  enable_document_modification,
+  enable_idf_weights>::
 load_vocabulary_from_file_snavely_vocab_tree_2_format_helper(
   FILE * file,
   const index_t node_index,
@@ -1210,6 +1092,203 @@ load_vocabulary_from_file_snavely_vocab_tree_2_format_helper(
   }
 }
 
+template<
+  class VocabularyTree,
+  typename Descriptor>
+void conditionally_enable::document_modification::DocumentModificationEnabled<
+  VocabularyTree,
+  Descriptor>::
+add_words_to_document(
+  const typename Descriptor::DimensionType * const descriptors_to_add,
+  const VocabularyTreeTypes::index_t num_descriptors_to_add,
+  const VocabularyTreeTypes::document_id_t document_id)
+{
+  const VocabularyTree * vt = static_cast<const VocabularyTree *>(this);
+
+  vt->compute_words(
+    descriptors_to_add,
+    num_descriptors_to_add,
+    m_words);
+  vt->compute_word_histogram(
+    m_words,
+    m_word_histogram);
+  vt->add_words_to_document(
+    m_word_histogram,
+    document_id);
+}
+
+template<
+  class VocabularyTree,
+  typename Descriptor>
+void conditionally_enable::document_modification::DocumentModificationEnabled<
+  VocabularyTree,
+  Descriptor>::
+remove_words_from_document(
+  const typename Descriptor::DimensionType * const descriptors_to_remove,
+  const VocabularyTreeTypes::index_t num_descriptors_to_remove,
+  const VocabularyTreeTypes::document_id_t document_id)
+{
+  const VocabularyTree * vt = static_cast<const VocabularyTree *>(this);
+
+  vt->compute_words(
+    descriptors_to_remove,
+    num_descriptors_to_remove,
+    m_words);
+  vt->compute_word_histogram(
+    m_words,
+    m_word_histogram);
+  vt->remove_words_from_document(
+    m_word_histogram,
+    document_id);
+}
+
+template<
+  class VocabularyTree,
+  typename Descriptor>
+void conditionally_enable::document_modification::DocumentModificationEnabled<
+  VocabularyTree,
+  Descriptor>::
+add_words_to_document(
+  const typename VocabularyTree::WordHistogram & histogram_of_words_to_add,
+  const VocabularyTreeTypes::document_id_t document_id)
+{
+  const VocabularyTree * vt = static_cast<const VocabularyTree *>(this);
+
+  // Find the storage index for this document.
+  const auto & found_iter = vt->m_document_to_storage_indices.find(document_id);
+  if (found_iter == vt->m_document_to_storage_indices.end())
+  {
+    throw std::runtime_error(
+      "VocabularyTree::add_words_to_document called with non-existent document_id");
+  }
+  const storage_index_t storage_index = found_iter->second;
+
+  frequency_t initial_magnitude = 0;
+  if (!std::is_same<HistogramNormalization, histogram_normalization::None>::value)
+  {
+    initial_magnitude = static_cast<frequency_t>(
+      1.0 / vt->m_document_storage[storage_index].get_inverse_magnitude());
+  }
+  HistogramNormalization normalization(initial_magnitude);
+
+  for (const auto & histogram_entry : histogram_of_words_to_add.histogram_entries)
+  {
+    auto & current_inverted_indices =
+      vt->m_word_inverted_indices[histogram_entry.word];
+    bool found = false;
+
+    // Search for an existing entry in the inverted index.
+    for (auto & inverted_index_entry : current_inverted_indices)
+    {
+      if (inverted_index_entry.storage_index == storage_index)
+      {
+        const frequency_t new_frequency =
+          inverted_index_entry.frequency + histogram_entry.frequency;
+        if (!std::is_same<HistogramNormalization, histogram_normalization::None>::value)
+        {
+          normalization.update_term(
+            inverted_index_entry.frequency,
+            new_frequency);
+        }
+        inverted_index_entry.frequency = new_frequency;
+        found = true;
+        break;
+      }
+    }
+    // If an existing entry was not found, create a new inverted index entry for
+    // this word-document pair.
+    if (!found)
+    {
+      current_inverted_indices.push_back(
+        InvertedIndexEntry(storage_index, histogram_entry.frequency));
+      if (!std::is_same<HistogramNormalization, histogram_normalization::None>::value)
+      {
+        normalization.add_term(histogram_entry.frequency);
+      }
+    }
+  }
+
+  if (!std::is_same<HistogramNormalization, histogram_normalization::None>::value)
+  {
+    vt->m_document_storage[storage_index].set_inverse_magnitude(
+      static_cast<frequency_t>(1.0 / normalization.compute_magnitude()));
+  }
+}
+
+template<
+  class VocabularyTree,
+  typename Descriptor>
+void conditionally_enable::document_modification::DocumentModificationEnabled<
+  VocabularyTree,
+  Descriptor>::
+remove_words_from_document(
+  const typename VocabularyTree::WordHistogram & histogram_of_words_to_remove,
+  const VocabularyTreeTypes::document_id_t document_id)
+{
+  const VocabularyTree * vt = static_cast<const VocabularyTree *>(this);
+
+  // Find the storage index for this document.
+  const auto & found_iter = vt->m_document_to_storage_indices.find(document_id);
+  if (found_iter == vt->m_document_to_storage_indices.end())
+  {
+    throw std::runtime_error(
+      "VocabularyTree::remove_words_from_document called with non-existent document_id");
+  }
+  const storage_index_t storage_index = found_iter->second;
+
+  frequency_t initial_magnitude = 0;
+  if (!std::is_same<HistogramNormalization, histogram_normalization::None>::value)
+  {
+    initial_magnitude = static_cast<frequency_t>(
+      1.0 / vt->m_document_storage[storage_index].get_inverse_magnitude());
+  }
+  HistogramNormalization normalization(initial_magnitude);
+
+  for (const auto & histogram_entry : histogram_of_words_to_remove.histogram_entries)
+  {
+    auto & current_inverted_indices =
+      vt->m_word_inverted_indices[histogram_entry.word];
+    bool found = false;
+    for (auto iter = current_inverted_indices.begin();
+      iter != current_inverted_indices.end();
+      ++iter)
+    {
+      if (iter->storage_index == storage_index)
+      {
+        const frequency_t new_frequency =
+          iter->frequency - histogram_entry.frequency;
+        if (!std::is_same<HistogramNormalization, histogram_normalization::None>::value)
+        {
+          normalization.update_term(
+            iter->frequency,
+            new_frequency);
+        }
+        if (new_frequency == 0) // TODO: Make sure that this comparison works.
+        {
+          current_inverted_indices.erase(iter);
+        }
+        else
+        {
+          iter->frequency = new_frequency;
+        }
+        found = true;
+        break;
+      }
+    }
+    if (!found)
+    {
+      throw std::runtime_error(
+        "VocabularyTree::remove_words_from_document could not find inverted index entry for document");
+    }
+  }
+
+  if (!std::is_same<HistogramNormalization, histogram_normalization::None>::value)
+  {
+    vt->m_document_storage[storage_index].set_inverse_magnitude(
+      static_cast<frequency_t>(1.0 / normalization.compute_magnitude()));
+  }
+}
+
 template<class VocabularyTree>
 void conditionally_enable::idf_weights::IdfWeightsEnabled<VocabularyTree>::
 compute_idf_weights()
@@ -1220,22 +1299,22 @@ compute_idf_weights()
   // By splitting the computation into its subtraction form, we avoid a division
   // operation on each iteration.
 
-  const VocabularyTree * voc_tree = static_cast<const VocabularyTree *>(this);
+  const VocabularyTree * vt = static_cast<const VocabularyTree *>(this);
 
   // If there are no documents in the database, reset the idf weights.
-  if (voc_tree->num_documents_in_database() == 0)
+  if (vt->num_documents_in_database() == 0)
   {
     reset_idf_weights();
     return;
   }
 
-  const VocabularyTree::frequency_t database_weight =
-    log(static_cast<VocabularyTree::frequency_t>(voc_tree->num_documents_in_database()));
+  const VocabularyTree::frequency_t database_weight = log(
+    static_cast<VocabularyTree::frequency_t>(vt->num_documents_in_database()));
 
-  for (VocabularyTree::index_t i = 0; i < voc_tree->m_num_words_in_vocabulary; ++i)
+  for (VocabularyTree::index_t i = 0; i < vt->m_num_words_in_vocabulary; ++i)
   {
     const VocabularyTree::index_t num_documents_with_word =
-      static_cast<VocabularyTree::index_t>(voc_tree->m_word_inverted_indices[i].size());
+      static_cast<VocabularyTree::index_t>(vt->m_word_inverted_indices[i].size());
     if (num_documents_with_word > 0)
     {
       const VocabularyTree::frequency_t word_weight =
@@ -1253,10 +1332,10 @@ template<class VocabularyTree>
 void conditionally_enable::idf_weights::IdfWeightsEnabled<VocabularyTree>::
 reset_idf_weights()
 {
-  const VocabularyTree * voc_tree = static_cast<const VocabularyTree *>(this);
+  const VocabularyTree * vt = static_cast<const VocabularyTree *>(this);
 
-  m_word_idf_weights.resize(voc_tree->m_num_words_in_vocabulary);
-  for (VocabularyTree::index_t i = 0; i < voc_tree->m_num_words_in_vocabulary; ++i)
+  m_word_idf_weights.resize(vt->m_num_words_in_vocabulary);
+  for (VocabularyTree::index_t i = 0; i < vt->m_num_words_in_vocabulary; ++i)
   {
     m_word_idf_weights[i] = 1;
   }

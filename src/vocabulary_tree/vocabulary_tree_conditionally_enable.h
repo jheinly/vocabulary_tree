@@ -17,6 +17,9 @@ template<class VocabularyTree>
 class IdfWeightsEnabled
 {
   public:
+    ////////////////////////////////////////////////////////////////////////////
+    // Public Processing Functions
+
     // Compute and update the IDF (inverse document frequency) weights for the
     // words in the database.
     void compute_idf_weights();
@@ -58,12 +61,13 @@ class IdfWeightsDisabled
 
 } // namespace idf_weights
 
-namespace histogram_normalization {
+namespace inverse_magnitudes {
 
 // This class is used when histogram normalization is enabled via the
-// HistogramNormalization template argument being not equal to None in
+// HistogramNormalization template argument being not equal to None and the
+// enable_document_modification template argument equalling true in
 // Vocabulary Tree.
-class HistogramNormalizationEnabled
+class InverseMagnitudesEnabled
 {
   public:
     // Return the inverse magnitude of the histogram.
@@ -82,9 +86,10 @@ class HistogramNormalizationEnabled
 };
 
 // This class is used when histogram normalization is disabled via the
-// HistogramNormalization template argument being equal to None in
+// HistogramNormalization template argument being equal to None or the
+// enable_document_modification template argument equalling false in
 // Vocabulary Tree.
-class HistogramNormalizationDisabled
+class InverseMagnitudesDisabled
 {
   public:
     inline VocabularyTreeTypes::frequency_t get_inverse_magnitude() const
@@ -95,7 +100,51 @@ class HistogramNormalizationDisabled
     {}
 };
 
-} // namespace histogram_normalization
+} // namespace inverse_magnitudes
+
+namespace document_modification {
+
+template<class VocabularyTree, typename Descriptor>
+class DocumentModificationEnabled
+{
+  public:
+    ////////////////////////////////////////////////////////////////////////////
+    // Public Processing Convenience Functions
+
+    // Add new words to an existing document in the database.
+    void add_words_to_document(
+      const typename Descriptor::DimensionType * const descriptors_to_add,
+      const VocabularyTreeTypes::index_t num_descriptors_to_add,
+      const VocabularyTreeTypes::document_id_t document_id);
+
+    // Remove words from an existing document in the database.
+    // NOTE: If all of the words for a document are removed, the document will
+    //       not automatically be removed from the database.
+    void remove_words_from_document(
+      const typename Descriptor::DimensionType * const descriptors_to_remove,
+      const VocabularyTreeTypes::index_t num_descriptors_to_remove,
+      const VocabularyTreeTypes::document_id_t document_id);
+
+    ////////////////////////////////////////////////////////////////////////////
+    // Public Processing Functions
+
+    // Add new words to an existing document in the database.
+    void add_words_to_document(
+      const typename VocabularyTree::WordHistogram & histogram_of_words_to_add,
+      const VocabularyTreeTypes::document_id_t document_id);
+
+    // Remove words from an existing document in the database.
+    // NOTE: If all of the words for a document are removed, the document will
+    //       not automatically be removed from the database.
+    void remove_words_from_document(
+      const typename VocabularyTree::WordHistogram & histogram_of_words_to_remove,
+      const VocabularyTreeTypes::document_id_t document_id);
+};
+
+class DocumentModificationDisabled
+{};
+
+} // namespace document_modification
 
 } // namespace conditionally_enable
 
