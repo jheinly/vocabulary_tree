@@ -4,6 +4,9 @@
 
 #include <vocabulary_tree/vocabulary_tree_types.h>
 #include <vocabulary_tree/vocabulary_tree_structs.h>
+#include <vocabulary_tree/vocabulary_tree_histogram_normalization_types.h>
+#include <cmath>
+#include <stdexcept>
 #include <vector>
 
 namespace vocabulary_tree {
@@ -78,17 +81,17 @@ void IdfWeightsEnabled<VocabularyTree>::compute_idf_weights()
     return;
   }
 
-  const VocabularyTree::frequency_t database_weight = log(
-    static_cast<VocabularyTree::frequency_t>(vt->num_documents_in_database()));
+  const VocabularyTreeTypes::frequency_t database_weight = log(
+    static_cast<VocabularyTreeTypes::frequency_t>(vt->num_documents_in_database()));
 
-  for (VocabularyTree::index_t i = 0; i < vt->m_num_words_in_vocabulary; ++i)
+  for (VocabularyTreeTypes::index_t i = 0; i < vt->m_num_words_in_vocabulary; ++i)
   {
-    const VocabularyTree::index_t num_documents_with_word =
-      static_cast<VocabularyTree::index_t>(vt->m_word_inverted_indices[i].size());
+    const VocabularyTreeTypes::index_t num_documents_with_word =
+      static_cast<VocabularyTreeTypes::index_t>(vt->m_word_inverted_indices[i].size());
     if (num_documents_with_word > 0)
     {
-      const VocabularyTree::frequency_t word_weight =
-        log(static_cast<VocabularyTree::frequency_t>(num_documents_with_word));
+      const VocabularyTreeTypes::frequency_t word_weight =
+        log(static_cast<VocabularyTreeTypes::frequency_t>(num_documents_with_word));
       m_word_idf_weights[i] = database_weight - word_weight;
     }
     else
@@ -104,7 +107,7 @@ void IdfWeightsEnabled<VocabularyTree>::reset_idf_weights()
   const VocabularyTree * vt = static_cast<const VocabularyTree *>(this);
 
   m_word_idf_weights.resize(vt->m_num_words_in_vocabulary);
-  for (VocabularyTree::index_t i = 0; i < vt->m_num_words_in_vocabulary; ++i)
+  for (VocabularyTreeTypes::index_t i = 0; i < vt->m_num_words_in_vocabulary; ++i)
   {
     m_word_idf_weights[i] = 1;
   }
@@ -232,12 +235,12 @@ add_words_to_document(
   vt->compute_words(
     descriptors_to_add,
     num_descriptors_to_add,
-    m_words);
+    vt->m_words);
   vt->compute_word_histogram(
-    m_words,
-    m_word_histogram);
+    vt->m_words,
+    vt->m_word_histogram);
   vt->add_words_to_document(
-    m_word_histogram,
+    vt->m_word_histogram,
     document_id);
 }
 
@@ -267,12 +270,12 @@ remove_words_from_document(
   vt->compute_words(
     descriptors_to_remove,
     num_descriptors_to_remove,
-    m_words);
+    vt->m_words);
   vt->compute_word_histogram(
-    m_words,
-    m_word_histogram);
+    vt->m_words,
+    vt->m_word_histogram);
   vt->remove_words_from_document(
-    m_word_histogram,
+    vt->m_word_histogram,
     document_id);
 }
 
@@ -305,12 +308,12 @@ add_words_to_document(
     throw std::runtime_error(
       "VocabularyTree::add_words_to_document called with non-existent document_id");
   }
-  const VocabularyTree::storage_index_t storage_index = found_iter->second;
+  const VocabularyTreeTypes::storage_index_t storage_index = found_iter->second;
 
-  VocabularyTree::frequency_t initial_magnitude = 0;
+  VocabularyTreeTypes::frequency_t initial_magnitude = 0;
   if (!std::is_same<HistogramNormalization, histogram_normalization::None>::value)
   {
-    initial_magnitude = static_cast<VocabularyTree::frequency_t>(
+    initial_magnitude = static_cast<VocabularyTreeTypes::frequency_t>(
       1.0 / vt->m_document_storage[storage_index].get_inverse_magnitude());
   }
   HistogramNormalization normalization(initial_magnitude);
@@ -326,7 +329,7 @@ add_words_to_document(
     {
       if (inverted_index_entry.storage_index == storage_index)
       {
-        const VocabularyTree::frequency_t new_frequency =
+        const VocabularyTreeTypes::frequency_t new_frequency =
           inverted_index_entry.frequency + histogram_entry.frequency;
         if (!std::is_same<HistogramNormalization, histogram_normalization::None>::value)
         {
@@ -344,7 +347,7 @@ add_words_to_document(
     if (!found)
     {
       current_inverted_indices.push_back(
-        VocabularyTree::InvertedIndexEntry(storage_index, histogram_entry.frequency));
+        typename VocabularyTree::InvertedIndexEntry(storage_index, histogram_entry.frequency));
       if (!std::is_same<HistogramNormalization, histogram_normalization::None>::value)
       {
         normalization.add_term(histogram_entry.frequency);
@@ -355,7 +358,7 @@ add_words_to_document(
   if (!std::is_same<HistogramNormalization, histogram_normalization::None>::value)
   {
     vt->m_document_storage[storage_index].set_inverse_magnitude(
-      static_cast<VocabularyTree::frequency_t>(1.0 / normalization.compute_magnitude()));
+      static_cast<VocabularyTreeTypes::frequency_t>(1.0 / normalization.compute_magnitude()));
   }
 }
 
@@ -388,12 +391,12 @@ remove_words_from_document(
     throw std::runtime_error(
       "VocabularyTree::remove_words_from_document called with non-existent document_id");
   }
-  const VocabularyTree::storage_index_t storage_index = found_iter->second;
+  const VocabularyTreeTypes::storage_index_t storage_index = found_iter->second;
 
-  VocabularyTree::frequency_t initial_magnitude = 0;
+  VocabularyTreeTypes::frequency_t initial_magnitude = 0;
   if (!std::is_same<HistogramNormalization, histogram_normalization::None>::value)
   {
-    initial_magnitude = static_cast<VocabularyTree::frequency_t>(
+    initial_magnitude = static_cast<VocabularyTreeTypes::frequency_t>(
       1.0 / vt->m_document_storage[storage_index].get_inverse_magnitude());
   }
   HistogramNormalization normalization(initial_magnitude);
@@ -409,7 +412,7 @@ remove_words_from_document(
     {
       if (iter->storage_index == storage_index)
       {
-        const VocabularyTree::frequency_t new_frequency =
+        const VocabularyTreeTypes::frequency_t new_frequency =
           iter->frequency - histogram_entry.frequency;
         if (!std::is_same<HistogramNormalization, histogram_normalization::None>::value)
         {
@@ -439,7 +442,7 @@ remove_words_from_document(
   if (!std::is_same<HistogramNormalization, histogram_normalization::None>::value)
   {
     vt->m_document_storage[storage_index].set_inverse_magnitude(
-      static_cast<VocabularyTree::frequency_t>(1.0 / normalization.compute_magnitude()));
+      static_cast<VocabularyTreeTypes::frequency_t>(1.0 / normalization.compute_magnitude()));
   }
 }
 

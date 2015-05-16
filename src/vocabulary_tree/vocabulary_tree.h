@@ -11,6 +11,7 @@
 #include <vocabulary_tree/indexed_storage.h>
 #include <cmath>
 #include <cstdio>
+#include <cstring>
 #include <iostream>
 #include <stdexcept>
 #include <string>
@@ -162,21 +163,26 @@ class VocabularyTree :
     // Add a new document to the database.
     void add_document_to_database(
       const typename Descriptor::DimensionType * const descriptors,
-      const index_t num_descriptors,
-      const document_id_t new_document_id);
+      const VocabularyTreeTypes::index_t num_descriptors,
+      const VocabularyTreeTypes::document_id_t new_document_id);
 
     // Remove an existing document from the database.
     void remove_document_from_database(
       const typename Descriptor::DimensionType * const descriptors,
-      const index_t num_descriptors,
-      const document_id_t document_id);
+      const VocabularyTreeTypes::index_t num_descriptors,
+      const VocabularyTreeTypes::document_id_t document_id);
 
     // Query the database by returning a list of the most similar documents.
     void query_database(
       const typename Descriptor::DimensionType * const query_descriptors,
-      const index_t num_query_descriptors,
-      const index_t max_num_results,
-      std::vector<QueryResult> & query_results) const;
+      const VocabularyTreeTypes::index_t num_query_descriptors,
+      const VocabularyTreeTypes::index_t max_num_results,
+      std::vector<typename VocabularyTreeStructs<
+        Descriptor,
+        HistogramNormalization,
+        HistogramDistance,
+        enable_document_modification,
+        enable_idf_weights>::QueryResult> & query_results) const;
 
     ////////////////////////////////////////////////////////////////////////////
     // Public Processing Functions
@@ -184,43 +190,68 @@ class VocabularyTree :
     // Convert a list of descriptors into a list of words.
     void compute_words(
       const typename Descriptor::DimensionType * const descriptors,
-      const index_t num_descriptors,
-      std::vector<word_t> & words) const;
+      const VocabularyTreeTypes::index_t num_descriptors,
+      std::vector<VocabularyTreeTypes::word_t> & words) const;
 
     // Convert a list of words into a word histogram.
     void compute_word_histogram(
-      const std::vector<word_t> & words,
-      WordHistogram & word_histogram) const;
+      const std::vector<VocabularyTreeTypes::word_t> & words,
+      typename VocabularyTreeStructs<
+        Descriptor,
+        HistogramNormalization,
+        HistogramDistance,
+        enable_document_modification,
+        enable_idf_weights>::WordHistogram & word_histogram) const;
 
     // Add a new document to the database.
     void add_document_to_database(
-      const WordHistogram & word_histogram,
-      const document_id_t new_document_id);
+      const typename VocabularyTreeStructs<
+        Descriptor,
+        HistogramNormalization,
+        HistogramDistance,
+        enable_document_modification,
+        enable_idf_weights>::WordHistogram & word_histogram,
+      const VocabularyTreeTypes::document_id_t new_document_id);
 
     // Remove an existing document from the database.
     void remove_document_from_database(
-      const WordHistogram & word_histogram,
-      const document_id_t document_id);
+      const typename VocabularyTreeStructs<
+        Descriptor,
+        HistogramNormalization,
+        HistogramDistance,
+        enable_document_modification,
+        enable_idf_weights>::WordHistogram & word_histogram,
+      const VocabularyTreeTypes::document_id_t document_id);
 
     // Test whether a document is currently stored in the database.
     bool is_document_in_database(
-      const document_id_t document_id) const;
+      const VocabularyTreeTypes::document_id_t document_id) const;
 
     // Query the database by returning a list of the most similar documents.
     void query_database(
-      const WordHistogram & query_word_histogram,
-      const index_t max_num_results,
-      std::vector<QueryResult> & query_results) const;
+      const typename VocabularyTreeStructs<
+        Descriptor,
+        HistogramNormalization,
+        HistogramDistance,
+        enable_document_modification,
+        enable_idf_weights>::WordHistogram & query_word_histogram,
+      const VocabularyTreeTypes::index_t max_num_results,
+      std::vector<typename VocabularyTreeStructs<
+        Descriptor,
+        HistogramNormalization,
+        HistogramDistance,
+        enable_document_modification,
+        enable_idf_weights>::QueryResult> & query_results) const;
 
     // Remove all stored documents in the database.
     void clear_database();
 
     // Get the number of words in the currently loaded vocabulary.
-    inline index_t num_words_in_vocabulary() const
+    inline VocabularyTreeTypes::index_t num_words_in_vocabulary() const
     { return m_num_words_in_vocabulary; }
 
     // Get the number of documents currently stored in the database.
-    inline index_t num_documents_in_database() const
+    inline VocabularyTreeTypes::index_t num_documents_in_database() const
     { return m_document_storage.num_entries(); }
 
   private:
@@ -236,44 +267,73 @@ class VocabularyTree :
 
     // Given an input descriptor and an interior node, this function returns the
     // index of the child node with which the descriptor is most similar.
-    index_t compute_best_child_node(
+    VocabularyTreeTypes::index_t compute_best_child_node(
       const typename Descriptor::DimensionType * const descriptor,
-      const Node & node) const;
+      const typename VocabularyTreeStructs<
+        Descriptor,
+        HistogramNormalization,
+        HistogramDistance,
+        enable_document_modification,
+        enable_idf_weights>::Node & node) const;
 
     // This function assists in loading a vocabulary stored in a VocabTree2 file
     // format (load_vocabulary_from_file_snavely_vocab_tree_2_format).
     void load_vocabulary_from_file_snavely_vocab_tree_2_format_helper(
       FILE * file,
-      const index_t node_index,
+      const VocabularyTreeTypes::index_t node_index,
       const int branch_factor,
-      word_t * const next_available_word);
+      VocabularyTreeTypes::word_t * const next_available_word);
 
     ////////////////////////////////////////////////////////////////////////////
     // Private Variables
 
     // The number of words in the current vocabulary.
-    index_t m_num_words_in_vocabulary;
+    VocabularyTreeTypes::index_t m_num_words_in_vocabulary;
 
     // A list of nodes that make up the vocabulary tree. The first node is the
     // root (m_nodes[0]), and a node's children are stored contiguously in the
     // vector.
-    std::vector<Node> m_nodes;
+    std::vector<typename VocabularyTreeStructs<
+      Descriptor,
+      HistogramNormalization,
+      HistogramDistance,
+      enable_document_modification,
+      enable_idf_weights>::Node> m_nodes;
 
     // The set of descriptors that make up the nodes in the vocabulary tree.
     // A node's index directly corresponds to the index of its descriptor.
     // For example, m_nodes[1] stores its descriptor in m_descriptors
-    std::vector<DescriptorStorage> m_descriptors;
+    std::vector<typename VocabularyTreeStructs<
+      Descriptor,
+      HistogramNormalization,
+      HistogramDistance,
+      enable_document_modification,
+      enable_idf_weights>::DescriptorStorage> m_descriptors;
 
     // Each word will have a list of the inverted index entries (documents)
     // that belong to it.
-    std::vector<std::vector<InvertedIndexEntry> > m_word_inverted_indices;
+    std::vector<std::vector<typename VocabularyTreeStructs<
+      Descriptor,
+      HistogramNormalization,
+      HistogramDistance,
+      enable_document_modification,
+      enable_idf_weights>::InvertedIndexEntry> > m_word_inverted_indices;
 
     // Each document stored in the database will have an entry in
     // m_document_storage.
-    IndexedStorage<DatabaseDocument, storage_index_t> m_document_storage;
+    IndexedStorage<
+      typename VocabularyTreeStructs<
+        Descriptor,
+        HistogramNormalization,
+        HistogramDistance,
+        enable_document_modification,
+        enable_idf_weights>::DatabaseDocument,
+      VocabularyTreeTypes::storage_index_t> m_document_storage;
 
     // A mapping between a document ID and an existing document storage index.
-    std::unordered_map<document_id_t, storage_index_t> m_document_to_storage_indices;
+    std::unordered_map<
+      VocabularyTreeTypes::document_id_t,
+      VocabularyTreeTypes::storage_index_t> m_document_to_storage_indices;
 
     ////////////////////////////////////////////////////////////////////////////
     // Private Temporary Variables
@@ -288,10 +348,15 @@ class VocabularyTree :
     mutable std::vector<HistogramDistance> m_histogram_distances;
 
     // This is used in the convenience functions.
-    mutable std::vector<word_t> m_words;
+    mutable std::vector<VocabularyTreeTypes::word_t> m_words;
 
     // This is used in the convenience functions.
-    mutable WordHistogram m_word_histogram;
+    mutable typename VocabularyTreeStructs<
+      Descriptor,
+      HistogramNormalization,
+      HistogramDistance,
+      enable_document_modification,
+      enable_idf_weights>::WordHistogram m_word_histogram;
 };
 
 template<
@@ -332,7 +397,17 @@ VocabularyTree<
   m_histogram_counts.clear();
   m_histogram_distances.clear();
   m_words.clear();
-  clear_idf_weights();
+  std::conditional<
+    enable_idf_weights,
+    conditionally_enable::idf_weights::IdfWeightsEnabled<
+      VocabularyTree<
+        Descriptor,
+        HistogramNormalization,
+        HistogramDistance,
+        enable_document_modification,
+        true> >,
+    conditionally_enable::idf_weights::IdfWeightsDisabled>::type::
+    clear_idf_weights();
 }
 
 template<
@@ -386,8 +461,8 @@ load_vocabulary_from_file_snavely_vocab_tree_2_format(
   //   tree_depth = 3; num_nodes =    11,111; num_leaves =    10,000
   //   tree_depth = 4; num_nodes =   111,111; num_leaves =   100,000
   //   tree_depth = 5; num_nodes = 1,111,111; num_leaves = 1,000,000
-  index_t num_nodes_estimate = 1;
-  index_t num_leaves_estimate = 1;
+  VocabularyTreeTypes::index_t num_nodes_estimate = 1;
+  VocabularyTreeTypes::index_t num_leaves_estimate = 1;
   for (int i = 0; i < tree_depth + 1; ++i)
   {
     num_leaves_estimate *= branch_factor;
@@ -401,9 +476,14 @@ load_vocabulary_from_file_snavely_vocab_tree_2_format(
   m_nodes.reserve(num_nodes_estimate);
 
   // Initialize the root node.
-  m_nodes.push_back(Node());
-  const index_t starting_index_for_children =
-    static_cast<index_t>(m_nodes.size());
+  m_nodes.push_back(typename VocabularyTreeStructs<
+      Descriptor,
+      HistogramNormalization,
+      HistogramDistance,
+      enable_document_modification,
+      enable_idf_weights>::Node());
+  const VocabularyTreeTypes::index_t starting_index_for_children =
+    static_cast<VocabularyTreeTypes::index_t>(m_nodes.size());
   m_nodes[0].starting_index_for_children = starting_index_for_children;
 
   // NOTE: Unused for root node.
@@ -413,7 +493,7 @@ load_vocabulary_from_file_snavely_vocab_tree_2_format(
   // NOTE: Unused for root node.
   fread(
     m_descriptors[0].values,
-    sizeof(Descriptor::DimensionType),
+    sizeof(typename Descriptor::DimensionType),
     Descriptor::NumDimensions,
     file);
   // After reading in the descriptor for the root node, set it to zero as it is
@@ -421,7 +501,7 @@ load_vocabulary_from_file_snavely_vocab_tree_2_format(
   memset(
     m_descriptors[0].values,
     0,
-    Descriptor::NumDimensions * sizeof(Descriptor::DimensionType));
+    Descriptor::NumDimensions * sizeof(typename Descriptor::DimensionType));
 
   // NOTE: Unused for root node.
   float weight = 0;
@@ -440,17 +520,22 @@ load_vocabulary_from_file_snavely_vocab_tree_2_format(
     if (children_flags[i] != 0)
     {
       ++num_children;
-      m_nodes.push_back(Node());
+      m_nodes.push_back(typename VocabularyTreeStructs<
+        Descriptor,
+        HistogramNormalization,
+        HistogramDistance,
+        enable_document_modification,
+        enable_idf_weights>::Node());
     }
   }
 
   m_nodes[0].num_children = num_children;
 
-  word_t next_available_word = 0;
+  VocabularyTreeTypes::word_t next_available_word = 0;
 
   // For each of the children, call the helper function to read their
   // information from file.
-  index_t child_offset = 0;
+  VocabularyTreeTypes::index_t child_offset = 0;
   for (int i = 0; i < branch_factor; ++i)
   {
     if (children_flags[i] != 0)
@@ -468,7 +553,17 @@ load_vocabulary_from_file_snavely_vocab_tree_2_format(
   m_descriptors.resize(m_nodes.size());
 
   clear_database();
-  reset_idf_weights();
+  std::conditional<
+    enable_idf_weights,
+    conditionally_enable::idf_weights::IdfWeightsEnabled<
+      VocabularyTree<
+        Descriptor,
+        HistogramNormalization,
+        HistogramDistance,
+        enable_document_modification,
+        true> >,
+    conditionally_enable::idf_weights::IdfWeightsDisabled>::type::
+    reset_idf_weights();
 
   m_histogram_counts.clear();
   m_histogram_counts.resize(m_num_words_in_vocabulary, 0);
@@ -490,8 +585,8 @@ void VocabularyTree<
   enable_idf_weights>::
 add_document_to_database(
   const typename Descriptor::DimensionType * const descriptors,
-  const index_t num_descriptors,
-  const document_id_t new_document_id)
+  const VocabularyTreeTypes::index_t num_descriptors,
+  const VocabularyTreeTypes::document_id_t new_document_id)
 {
   compute_words(
     descriptors,
@@ -519,8 +614,8 @@ void VocabularyTree<
   enable_idf_weights>::
 remove_document_from_database(
   const typename Descriptor::DimensionType * const descriptors,
-  const index_t num_descriptors,
-  const document_id_t document_id)
+  const VocabularyTreeTypes::index_t num_descriptors,
+  const VocabularyTreeTypes::document_id_t document_id)
 {
   compute_words(
     descriptors,
@@ -548,9 +643,14 @@ void VocabularyTree<
   enable_idf_weights>::
 query_database(
   const typename Descriptor::DimensionType * const query_descriptors,
-  const index_t num_query_descriptors,
-  const index_t max_num_results,
-  std::vector<QueryResult> & query_results) const
+  const VocabularyTreeTypes::index_t num_query_descriptors,
+  const VocabularyTreeTypes::index_t max_num_results,
+  std::vector<typename VocabularyTreeStructs<
+    Descriptor,
+    HistogramNormalization,
+    HistogramDistance,
+    enable_document_modification,
+    enable_idf_weights>::QueryResult> & query_results) const
 {
   compute_words(
     query_descriptors,
@@ -579,26 +679,33 @@ void VocabularyTree<
   enable_idf_weights>::
 compute_words(
   const typename Descriptor::DimensionType * const descriptors,
-  const index_t num_descriptors,
-  std::vector<word_t> & words) const
+  const VocabularyTreeTypes::index_t num_descriptors,
+  std::vector<VocabularyTreeTypes::word_t> & words) const
 {
   words.resize(num_descriptors);
 
   // Iterate over each descriptor in the input set.
-  for (index_t descriptor_idx = 0; descriptor_idx < num_descriptors; ++descriptor_idx)
+  for (VocabularyTreeTypes::index_t descriptor_idx = 0;
+       descriptor_idx < num_descriptors;
+       ++descriptor_idx)
   {
     // Get a pointer to the current descriptor.
     const typename Descriptor::DimensionType * const descriptor =
       descriptors + descriptor_idx * Descriptor::NumDimensions;
 
     // Start traversal at the root node.
-    index_t current_node_idx = 0;
+    VocabularyTreeTypes::index_t current_node_idx = 0;
 
     // Keep traversing the tree's nodes until the descriptor is assigned a word.
     for (;;)
     {
       // Get a reference to the current node.
-      const Node & node = m_nodes[current_node_idx];
+      const typename VocabularyTreeStructs<
+        Descriptor,
+        HistogramNormalization,
+        HistogramDistance,
+        enable_document_modification,
+        enable_idf_weights>::Node & node = m_nodes[current_node_idx];
 
       // If the current node has no children, assign this node's visual word to
       // the descriptor and break out of the traversal.
@@ -627,8 +734,13 @@ void VocabularyTree<
   enable_document_modification,
   enable_idf_weights>::
 compute_word_histogram(
-  const std::vector<word_t> & words,
-  WordHistogram & word_histogram) const
+  const std::vector<VocabularyTreeTypes::word_t> & words,
+  typename VocabularyTreeStructs<
+    Descriptor,
+    HistogramNormalization,
+    HistogramDistance,
+    enable_document_modification,
+    enable_idf_weights>::WordHistogram & word_histogram) const
 {
   word_histogram.histogram_entries.clear();
 
@@ -648,10 +760,15 @@ compute_word_histogram(
     // for it in word_histogram.
     if (m_histogram_counts[word] != 0)
     {
-      const frequency_t frequency =
-        static_cast<frequency_t>(m_histogram_counts[word]);
+      const VocabularyTreeTypes::frequency_t frequency =
+        static_cast<VocabularyTreeTypes::frequency_t>(m_histogram_counts[word]);
       word_histogram.histogram_entries.push_back(
-        HistogramEntry(word, frequency));
+        typename VocabularyTreeStructs<
+          Descriptor,
+          HistogramNormalization,
+          HistogramDistance,
+          enable_document_modification,
+          enable_idf_weights>::HistogramEntry(word, frequency));
       m_histogram_counts[word] = 0;
 
       if (!std::is_same<HistogramNormalization, histogram_normalization::None>::value)
@@ -665,8 +782,8 @@ compute_word_histogram(
   if (!std::is_same<HistogramNormalization, histogram_normalization::None>::value)
   {
     // Compute the inverse magnitude.
-    const frequency_t inverse_magnitude =
-      static_cast<frequency_t>(1.0 / normalization.compute_magnitude());
+    const VocabularyTreeTypes::frequency_t inverse_magnitude =
+      static_cast<VocabularyTreeTypes::frequency_t>(1.0 / normalization.compute_magnitude());
 
     if (enable_document_modification)
     {
@@ -697,8 +814,13 @@ void VocabularyTree<
   enable_document_modification,
   enable_idf_weights>::
 add_document_to_database(
-  const WordHistogram & word_histogram,
-  const document_id_t new_document_id)
+  const typename VocabularyTreeStructs<
+    Descriptor,
+    HistogramNormalization,
+    HistogramDistance,
+    enable_document_modification,
+    enable_idf_weights>::WordHistogram & word_histogram,
+  const VocabularyTreeTypes::document_id_t new_document_id)
 {
   // Add the new document to the indexed storage data structure.
   if (is_document_in_database(new_document_id))
@@ -707,12 +829,18 @@ add_document_to_database(
       "VocabularyTree:add_document_to_database called with existing document_id");
   }
   
-  DatabaseDocument document(new_document_id);
+  typename VocabularyTreeStructs<
+    Descriptor,
+    HistogramNormalization,
+    HistogramDistance,
+    enable_document_modification,
+    enable_idf_weights>::DatabaseDocument document(new_document_id);
   if (!std::is_same<HistogramNormalization, histogram_normalization::None>::value)
   {
     document.set_inverse_magnitude(word_histogram.get_inverse_magnitude());
   }
-  const storage_index_t storage_index = m_document_storage.add(document);
+  const VocabularyTreeTypes::storage_index_t storage_index =
+    m_document_storage.add(document);
 
   // Update the mapping between document ids and storage indices.
   m_document_to_storage_indices[new_document_id] = storage_index;
@@ -723,7 +851,13 @@ add_document_to_database(
     // Create an entry in the inverted index for the current histogram entry.
     // This stores that the word appeared in the document.
     m_word_inverted_indices[histogram_entry.word].push_back(
-      InvertedIndexEntry(storage_index, histogram_entry.frequency));
+      typename VocabularyTreeStructs<
+        Descriptor,
+        HistogramNormalization,
+        HistogramDistance,
+        enable_document_modification,
+        enable_idf_weights>::InvertedIndexEntry(
+          storage_index, histogram_entry.frequency));
   }
 }
 
@@ -740,8 +874,13 @@ void VocabularyTree<
   enable_document_modification,
   enable_idf_weights>::
 remove_document_from_database(
-  const WordHistogram & word_histogram,
-  const document_id_t document_id)
+  const typename VocabularyTreeStructs<
+    Descriptor,
+    HistogramNormalization,
+    HistogramDistance,
+    enable_document_modification,
+    enable_idf_weights>::WordHistogram & word_histogram,
+  const VocabularyTreeTypes::document_id_t document_id)
 {
   // Find the storage index for this document.
   const auto & found_iter = m_document_to_storage_indices.find(document_id);
@@ -750,7 +889,7 @@ remove_document_from_database(
     throw std::runtime_error(
       "VocabularyTree::remove_document_from_database called with non-existent document_id");
   }
-  const storage_index_t storage_index = found_iter->second;
+  const VocabularyTreeTypes::storage_index_t storage_index = found_iter->second;
 
   // Remove the document from storage.
   m_document_to_storage_indices.erase(document_id);
@@ -794,7 +933,7 @@ bool VocabularyTree<
   enable_document_modification,
   enable_idf_weights>::
 is_document_in_database(
-  const document_id_t document_id) const
+  const VocabularyTreeTypes::document_id_t document_id) const
 {
   const auto found = m_document_to_storage_indices.find(document_id);
   if (found == m_document_to_storage_indices.end())
@@ -820,35 +959,57 @@ void VocabularyTree<
   enable_document_modification,
   enable_idf_weights>::
 query_database(
-  const WordHistogram & query_word_histogram,
-  const index_t max_num_results,
-  std::vector<QueryResult> & query_results) const
+  const typename VocabularyTreeStructs<
+    Descriptor,
+    HistogramNormalization,
+    HistogramDistance,
+    enable_document_modification,
+    enable_idf_weights>::WordHistogram & query_word_histogram,
+  const VocabularyTreeTypes::index_t max_num_results,
+  std::vector<typename VocabularyTreeStructs<
+    Descriptor,
+    HistogramNormalization,
+    HistogramDistance,
+    enable_document_modification,
+    enable_idf_weights>::QueryResult> & query_results) const
 {
-  const storage_index_t document_storage_capacity =
+  const VocabularyTreeTypes::storage_index_t document_storage_capacity =
     m_document_storage.capacity();
   m_histogram_distances.resize(document_storage_capacity);
-  for (storage_index_t i = 0; i < document_storage_capacity; ++i)
+  for (VocabularyTreeTypes::storage_index_t i = 0; i < document_storage_capacity; ++i)
   {
     m_histogram_distances[i].reset();
   }
 
   for (const auto & histogram_entry : query_word_histogram.histogram_entries)
   {
-    frequency_t query_frequency = histogram_entry.frequency;
+    VocabularyTreeTypes::frequency_t query_frequency = histogram_entry.frequency;
     if (!std::is_same<HistogramNormalization, histogram_normalization::None>::value)
     {
       query_frequency *= query_word_histogram.get_inverse_magnitude();
     }
 
-    const frequency_t idf_weight = get_idf_weight(histogram_entry.word);
+    const VocabularyTreeTypes::frequency_t idf_weight =
+      std::conditional<
+        enable_idf_weights,
+        conditionally_enable::idf_weights::IdfWeightsEnabled<
+          VocabularyTree<
+            Descriptor,
+            HistogramNormalization,
+            HistogramDistance,
+            enable_document_modification,
+            true> >,
+        conditionally_enable::idf_weights::IdfWeightsDisabled>::type::
+        get_idf_weight(histogram_entry.word);
 
     const auto & current_inverted_indices =
       m_word_inverted_indices[histogram_entry.word];
     for (const auto & inverted_index_entry : current_inverted_indices)
     {
-      const storage_index_t storage_index = inverted_index_entry.storage_index;
+      const VocabularyTreeTypes::storage_index_t storage_index =
+        inverted_index_entry.storage_index;
       
-      frequency_t frequency = inverted_index_entry.frequency;
+      VocabularyTreeTypes::frequency_t frequency = inverted_index_entry.frequency;
       if (enable_document_modification &&
         !std::is_same<HistogramNormalization, histogram_normalization::None>::value)
       {
@@ -869,26 +1030,32 @@ query_database(
   }
   
   query_results.resize(document_storage_capacity);
-  for (storage_index_t i = 0; i < document_storage_capacity; ++i)
+  for (VocabularyTreeTypes::storage_index_t i = 0; i < document_storage_capacity; ++i)
   {
     query_results[i].document_id = m_document_storage[i].document_id;
     query_results[i].score = m_histogram_distances[i].compute_magnitude();
   }
 
   // Determine the number of results that can be returned.
-  const index_t num_results =
-    std::min<index_t>(max_num_results, m_document_storage.num_entries());
+  const VocabularyTreeTypes::index_t num_results =
+    std::min<VocabularyTreeTypes::index_t>(
+      max_num_results, m_document_storage.num_entries());
   
   // Find the num_results best query results.
   std::partial_sort(
     query_results.begin(),
     query_results.begin() + num_results,
     query_results.end(),
-    QueryResult::greater);
+    VocabularyTreeStructs<
+      Descriptor,
+      HistogramNormalization,
+      HistogramDistance,
+      enable_document_modification,
+      enable_idf_weights>::QueryResult::greater);
   query_results.resize(num_results);
 
   // Remove any database results that have 0 overlap with the query document.
-  for (index_t i = 0; i < num_results; ++i)
+  for (VocabularyTreeTypes::index_t i = 0; i < num_results; ++i)
   {
     if (query_results[i].score == 0) // TODO: Make sure this comparison works.
     {
@@ -913,7 +1080,7 @@ void VocabularyTree<
 clear_database()
 {
   m_word_inverted_indices.resize(m_num_words_in_vocabulary);
-  for (index_t i = 0; i < m_num_words_in_vocabulary; ++i)
+  for (VocabularyTreeTypes::index_t i = 0; i < m_num_words_in_vocabulary; ++i)
   {
     m_word_inverted_indices[i].clear();
   }
@@ -933,16 +1100,21 @@ VocabularyTreeTypes::index_t VocabularyTree<
   enable_idf_weights>::
 compute_best_child_node(
   const typename Descriptor::DimensionType * const descriptor,
-  const Node & node) const
+  const typename VocabularyTreeStructs<
+    Descriptor,
+    HistogramNormalization,
+    HistogramDistance,
+    enable_document_modification,
+    enable_idf_weights>::Node & node) const
 {
-  index_t best_idx = 0;
-  Descriptor::DistanceType best_distance = Descriptor::WorstDistance;
+  VocabularyTreeTypes::index_t best_idx = 0;
+  typename Descriptor::DistanceType best_distance = Descriptor::WorstDistance;
 
   // Iterate over this node's children, and keep track of the best match
   // (the child with the smallest distance to the current descriptor).
-  for (index_t i = 0; i < node.num_children; ++i)
+  for (VocabularyTreeTypes::index_t i = 0; i < node.num_children; ++i)
   {
-    const Descriptor::DistanceType distance = Descriptor::compute_distance(
+    const typename Descriptor::DistanceType distance = Descriptor::compute_distance(
       descriptor,
       m_descriptors[node.starting_index_for_children + i].values);
     if (Descriptor::is_first_distance_better(distance, best_distance))
@@ -970,9 +1142,9 @@ void VocabularyTree<
   enable_idf_weights>::
 load_vocabulary_from_file_snavely_vocab_tree_2_format_helper(
   FILE * file,
-  const index_t node_index,
+  const VocabularyTreeTypes::index_t node_index,
   const int branch_factor,
-  word_t * const next_available_word)
+  VocabularyTreeTypes::word_t * const next_available_word)
 {
   // Read the flag which indicates whether this node is an interior node or a
   // leaf node.
@@ -983,7 +1155,7 @@ load_vocabulary_from_file_snavely_vocab_tree_2_format_helper(
   // descriptors vector.
   fread(
     m_descriptors[node_index].values,
-    sizeof(Descriptor::DimensionType),
+    sizeof(typename Descriptor::DimensionType),
     Descriptor::NumDimensions,
     file);
 
@@ -995,8 +1167,8 @@ load_vocabulary_from_file_snavely_vocab_tree_2_format_helper(
   {
     // We have reached an interior node.
 
-    const index_t starting_index_for_children =
-      static_cast<index_t>(m_nodes.size());
+    const VocabularyTreeTypes::index_t starting_index_for_children =
+      static_cast<VocabularyTreeTypes::index_t>(m_nodes.size());
     m_nodes[node_index].starting_index_for_children =
       starting_index_for_children;
 
@@ -1013,7 +1185,12 @@ load_vocabulary_from_file_snavely_vocab_tree_2_format_helper(
       if (children_flags[i] != 0)
       {
         ++num_children;
-        m_nodes.push_back(Node());
+        m_nodes.push_back(typename VocabularyTreeStructs<
+          Descriptor,
+          HistogramNormalization,
+          HistogramDistance,
+          enable_document_modification,
+          enable_idf_weights>::Node());
       }
     }
 
@@ -1021,7 +1198,7 @@ load_vocabulary_from_file_snavely_vocab_tree_2_format_helper(
 
     // Recursively call the helper function on this node's children to read the
     // information from file.
-    index_t child_offset = 0;
+    VocabularyTreeTypes::index_t child_offset = 0;
     for (int i = 0; i < branch_factor; ++i)
     {
       if (children_flags[i] != 0)
