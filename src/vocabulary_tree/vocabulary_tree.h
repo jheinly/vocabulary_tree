@@ -19,7 +19,7 @@
 #include <unordered_map>
 #include <vector>
 
-/*
+/*******************************************************************************
 This file defines a vocabulary tree and an associated database, in which
 documents (represented by set of words) can be inserted, and then retrieved
 based on their similarity to a query document.
@@ -54,7 +54,7 @@ TODO: Make sure that inverse_magnitude cannot be zero, as that would result in
 
 TODO: Add support for threading (making the functions thread-safe). Ideally,
       support would be enabled via a template argument.
-*/
+*******************************************************************************/
 
 namespace vocabulary_tree {
 
@@ -184,6 +184,25 @@ class VocabularyTree :
         enable_document_modification,
         enable_idf_weights>::QueryResult> & query_results) const;
 
+    /***************************************************************************
+    The following convenience functions are enabled if the
+    enable_document_modification template argument is set to true.
+
+    // Add new words to an existing document in the database.
+    void add_words_to_document(
+      const typename Descriptor::DimensionType * const descriptors_to_add,
+      const VocabularyTreeTypes::index_t num_descriptors_to_add,
+      const VocabularyTreeTypes::document_id_t document_id);
+
+    // Remove words from an existing document in the database.
+    // NOTE: If all of the words for a document are removed, the document will
+    //       not automatically be removed from the database.
+    void remove_words_from_document(
+      const typename Descriptor::DimensionType * const descriptors_to_remove,
+      const VocabularyTreeTypes::index_t num_descriptors_to_remove,
+      const VocabularyTreeTypes::document_id_t document_id);
+    ***************************************************************************/
+
     ////////////////////////////////////////////////////////////////////////////
     // Public Processing Functions
 
@@ -253,6 +272,36 @@ class VocabularyTree :
     // Get the number of documents currently stored in the database.
     inline VocabularyTreeTypes::index_t num_documents_in_database() const
     { return m_document_storage.num_entries(); }
+
+    /***************************************************************************
+    The following functions are enabled if the enable_document_modification
+    template argument is set to true.
+
+    // Add new words to an existing document in the database.
+    void add_words_to_document(
+      const typename VocabularyTreeStructs::WordHistogram & histogram_of_words_to_add,
+      const VocabularyTreeTypes::document_id_t document_id);
+
+    // Remove words from an existing document in the database.
+    // NOTE: If all of the words for a document are removed, the document will
+    //       not automatically be removed from the database.
+    void remove_words_from_document(
+      const typename VocabularyTreeStructs::WordHistogram & histogram_of_words_to_remove,
+      const VocabularyTreeTypes::document_id_t document_id);
+    ***************************************************************************/
+
+    /***************************************************************************
+    The following functions are enabled if the enable_idf_weights template
+    argument is set to true.
+
+    // Compute and update the IDF (inverse document frequency) weights for the
+    // words in the database.
+    void compute_idf_weights();
+
+    // Reset the IDF (inverse document frequency) weights to 1.0 for the words
+    // in the database.
+    void reset_idf_weights();
+    ***************************************************************************/
 
   private:
     ////////////////////////////////////////////////////////////////////////////
