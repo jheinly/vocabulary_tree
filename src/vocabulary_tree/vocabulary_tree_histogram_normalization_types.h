@@ -88,33 +88,6 @@ class L2 : public VocabularyTreeTypes
     frequency_t m_magnitude;
 };
 
-// L2-squared distance, which is the sum of the squared values.
-class L2Squared : public VocabularyTreeTypes
-{
-  public:
-    L2Squared(const frequency_t initial_magnitude = 0)
-    : m_magnitude(initial_magnitude)
-    {}
-
-    inline void add_term(const frequency_t frequency)
-    { m_magnitude += frequency * frequency; }
-
-    inline void update_term(
-      const frequency_t old_frequency,
-      const frequency_t new_frequency)
-    {
-      m_magnitude +=
-        new_frequency * new_frequency -
-        old_frequency * old_frequency;
-    }
-
-    inline frequency_t compute_magnitude() const
-    { return m_magnitude; }
-
-  private:
-    frequency_t m_magnitude;
-};
-
 } // namespace histogram_normalization
 
 } // namespace vocabulary_tree
