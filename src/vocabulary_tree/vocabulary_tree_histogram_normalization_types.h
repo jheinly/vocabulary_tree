@@ -20,12 +20,10 @@ namespace histogram_normalization {
 class None : public VocabularyTreeTypes
 {
   public:
-    None(
-      const frequency_t /*initial_magnitude*/ = 0)
+    None(const frequency_t /*initial_magnitude*/ = 0)
     {}
 
-    inline void add_term(
-      const frequency_t /*frequency*/) const
+    inline void add_term(const frequency_t /*frequency*/) const
     {}
 
     inline void update_term(

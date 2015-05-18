@@ -30,7 +30,7 @@ class VocabularyTreeStructs : public VocabularyTreeTypes
       HistogramEntry(
         const word_t word,
         const frequency_t frequency)
-        : word(word),
+      : word(word),
         frequency(frequency)
       {}
 
@@ -60,9 +60,7 @@ class VocabularyTreeStructs : public VocabularyTreeTypes
       static inline bool greater(
         const QueryResult & a,
         const QueryResult & b)
-      {
-        return a.score > b.score;
-      }
+      { return a.score > b.score; }
 
       document_id_t document_id;
       frequency_t score;
@@ -83,7 +81,7 @@ class VocabularyTreeStructs : public VocabularyTreeTypes
     struct Node
     {
       Node()
-        : starting_index_for_children(InvalidIndex),
+      : starting_index_for_children(InvalidIndex),
         num_children(InvalidIndex),
         word(InvalidWord)
       {}
@@ -102,7 +100,7 @@ class VocabularyTreeStructs : public VocabularyTreeTypes
       InvertedIndexEntry(
         const storage_index_t storage_index,
         const frequency_t frequency)
-        : storage_index(storage_index),
+      : storage_index(storage_index),
         frequency(frequency)
       {}
 
@@ -122,7 +120,7 @@ class VocabularyTreeStructs : public VocabularyTreeTypes
       conditionally_enable::inverse_magnitudes::InverseMagnitudesDisabled>::type
     {
       DatabaseDocument(const document_id_t document_id)
-        : document_id(document_id)
+      : document_id(document_id)
       {}
 
       document_id_t document_id;
