@@ -458,7 +458,7 @@ load_vocabulary_from_file_snavely_vocab_tree_2_format(
   // NOTE: Unused for root node.
   fread(
     m_descriptors[0].values,
-    sizeof(Descriptor::DimensionType),
+    sizeof(typename Descriptor::DimensionType),
     Descriptor::NumDimensions,
     file);
   // After reading in the descriptor for the root node, set it to zero as it is
@@ -466,7 +466,7 @@ load_vocabulary_from_file_snavely_vocab_tree_2_format(
   memset(
     m_descriptors[0].values,
     0,
-    Descriptor::NumDimensions * sizeof(Descriptor::DimensionType));
+    Descriptor::NumDimensions * sizeof(typename Descriptor::DimensionType));
 
   // NOTE: Unused for root node.
   float weight = 0;
@@ -1080,13 +1080,13 @@ compute_best_child_node(
   const Node & node) const
 {
   index_t best_idx = 0;
-  Descriptor::DistanceType best_distance = Descriptor::WorstDistance;
+  typename Descriptor::DistanceType best_distance = Descriptor::WorstDistance;
 
   // Iterate over this node's children, and keep track of the best match
   // (the child with the smallest distance to the current descriptor).
   for (index_t i = 0; i < node.num_children; ++i)
   {
-    const Descriptor::DistanceType distance = Descriptor::compute_distance(
+    const typename Descriptor::DistanceType distance = Descriptor::compute_distance(
       descriptor,
       m_descriptors[node.starting_index_for_children + i].values);
     if (Descriptor::is_first_distance_better(distance, best_distance))
@@ -1120,7 +1120,7 @@ load_vocabulary_from_file_snavely_vocab_tree_2_format_helper(
   // descriptors vector.
   fread(
     m_descriptors[node_index].values,
-    sizeof(Descriptor::DimensionType),
+    sizeof(typename Descriptor::DimensionType),
     Descriptor::NumDimensions,
     file);
 
