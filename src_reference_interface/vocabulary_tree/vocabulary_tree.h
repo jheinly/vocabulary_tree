@@ -324,7 +324,7 @@ class VocabularyTree : public VocabularyTreeTypes
 
     // The set of descriptors that make up the nodes in the vocabulary tree.
     // A node's index directly corresponds to the index of its descriptor.
-    // For example, m_nodes[1] stores its descriptor in m_descriptors
+    // For example, m_nodes[1] stores its descriptor in m_descriptors[1].
     std::vector<DescriptorStorage> m_descriptors;
 
     // Each word will have a list of the inverted index entries (documents)
