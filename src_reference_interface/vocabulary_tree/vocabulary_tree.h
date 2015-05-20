@@ -25,7 +25,7 @@ NOTE: For ease of programming, define the class in the following manner:
         typedef vocabulary_tree::VocabularyTree<
           vocabulary_tree::descriptor::Sift,
           vocabulary_tree::histogram_normalization::L1,
-          vocabulary_tree::histogram_distance::Min> VocTree;
+          vocabulary_tree::histogram_distance::Intersect> VocTree;
       This allows an instance of the class to be declared as:
         VocTree voc_tree;
       Relevant types can also be accessed as follows:
@@ -56,7 +56,7 @@ namespace vocabulary_tree {
 template<
   typename Descriptor = descriptor::Sift,
   typename HistogramNormalization = histogram_normalization::L1,
-  typename HistogramDistance = histogram_distance::Min>
+  typename HistogramDistance = histogram_distance::Intersect>
 class VocabularyTree : public VocabularyTreeTypes
 {
   public:

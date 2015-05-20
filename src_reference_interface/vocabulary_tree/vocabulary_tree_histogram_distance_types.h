@@ -46,12 +46,14 @@ class Dot : public VocabularyTreeTypes
     frequency_t m_magnitude;
 };
 
-// Min distance between two histograms (the minimum values between corresponding
-// bins are selected, and then summed to a single value).
-class Min : public VocabularyTreeTypes
+// Intersect distance between two histograms (the minimum values between
+// corresponding bins are selected, and then summed to a single value). In other
+// words, the two histograms are intersected, and the total intersected area is
+// summed.
+class Intersect : public VocabularyTreeTypes
 {
   public:
-    Min()
+    Intersect()
     : m_magnitude(0)
     {}
 
