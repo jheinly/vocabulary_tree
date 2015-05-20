@@ -129,12 +129,6 @@ class VocabularyTree : public VocabularyTreeTypes
       const index_t num_descriptors,
       const document_id_t new_document_id);
 
-    // Remove an existing document from the database.
-    void remove_document_from_database(
-      const typename Descriptor::DimensionType * const descriptors,
-      const index_t num_descriptors,
-      const document_id_t document_id);
-
     // Add new words to an existing document in the database.
     void add_words_to_document(
       const typename Descriptor::DimensionType * const descriptors_to_add,
@@ -177,7 +171,6 @@ class VocabularyTree : public VocabularyTreeTypes
 
     // Remove an existing document from the database.
     void remove_document_from_database(
-      const WordHistogram & word_histogram,
       const document_id_t document_id);
 
     // Test whether a document is currently stored in the database.
@@ -272,13 +265,13 @@ class VocabularyTree : public VocabularyTreeTypes
     {
       DatabaseDocument(
         const document_id_t document_id,
-        const frequency_t inverse_magnitude)
+        const WordHistogram & word_histogram)
       : document_id(document_id),
-        inverse_magnitude(inverse_magnitude)
+        word_histogram(word_histogram)
       {}
 
       document_id_t document_id;
-      frequency_t inverse_magnitude;
+      WordHistogram word_histogram;
     };
 
     // This struct conveniently stores a single descriptor.
@@ -548,28 +541,6 @@ template<
   typename HistogramNormalization,
   typename HistogramDistance>
 void VocabularyTree<Descriptor, HistogramNormalization, HistogramDistance>::
-remove_document_from_database(
-  const typename Descriptor::DimensionType * const descriptors,
-  const index_t num_descriptors,
-  const document_id_t document_id)
-{
-  compute_words(
-    descriptors,
-    num_descriptors,
-    m_words);
-  compute_word_histogram(
-    m_words,
-    m_word_histogram);
-  remove_document_from_database(
-    m_word_histogram,
-    document_id);
-}
-
-template<
-  typename Descriptor,
-  typename HistogramNormalization,
-  typename HistogramDistance>
-void VocabularyTree<Descriptor, HistogramNormalization, HistogramDistance>::
 add_words_to_document(
   const typename Descriptor::DimensionType * const descriptors_to_add,
   const index_t num_descriptors_to_add,
@@ -734,7 +705,7 @@ add_document_to_database(
       "VocabularyTree:add_document_to_database called with existing document_id");
   }
   const storage_index_t storage_index = m_document_storage.add(
-    DatabaseDocument(new_document_id, word_histogram.inverse_magnitude));
+    DatabaseDocument(new_document_id, word_histogram));
 
   // Update the mapping between document ids and storage indices.
   m_document_to_storage_indices[new_document_id] = storage_index;
@@ -755,7 +726,6 @@ template<
   typename HistogramDistance>
 void VocabularyTree<Descriptor, HistogramNormalization, HistogramDistance>::
 remove_document_from_database(
-  const WordHistogram & word_histogram,
   const document_id_t document_id)
 {
   // Find the storage index for this document.
@@ -766,10 +736,8 @@ remove_document_from_database(
       "VocabularyTree::remove_document_from_database called with non-existent document_id");
   }
   const storage_index_t storage_index = found_iter->second;
-
-  // Remove the document from storage.
-  m_document_to_storage_indices.erase(document_id);
-  m_document_storage.remove(storage_index);
+  const WordHistogram & word_histogram =
+    m_document_storage[storage_index].word_histogram;
 
   // Iterate through the histogram entries for this document.
   for (const auto & histogram_entry : word_histogram.histogram_entries)
@@ -794,6 +762,10 @@ remove_document_from_database(
         "VocabularyTree::remove_document_from_database could not find inverted index entry for document");
     }
   }
+
+  // Remove the document from storage.
+  m_document_to_storage_indices.erase(document_id);
+  m_document_storage.remove(storage_index);
 }
 
 template<
@@ -834,8 +806,11 @@ add_words_to_document(
   const storage_index_t storage_index = found_iter->second;
 
   const frequency_t initial_magnitude = static_cast<frequency_t>(
-    1.0 / m_document_storage[storage_index].inverse_magnitude);
+    1.0 / m_document_storage[storage_index].word_histogram.inverse_magnitude);
   HistogramNormalization normalization(initial_magnitude);
+
+  // TODO: Add histogram_of_words_to_add to
+  //       m_document_storage[storage_index].word_histogram.
 
   for (const auto & histogram_entry : histogram_of_words_to_add.histogram_entries)
   {
@@ -868,7 +843,7 @@ add_words_to_document(
     }
   }
 
-  m_document_storage[storage_index].inverse_magnitude =
+  m_document_storage[storage_index].word_histogram.inverse_magnitude =
     static_cast<frequency_t>(1.0 / normalization.compute_magnitude());
 }
 
@@ -891,8 +866,11 @@ remove_words_from_document(
   const storage_index_t storage_index = found_iter->second;
 
   const frequency_t initial_magnitude = static_cast<frequency_t>(
-    1.0 / m_document_storage[storage_index].inverse_magnitude);
+    1.0 / m_document_storage[storage_index].word_histogram.inverse_magnitude);
   HistogramNormalization normalization(initial_magnitude);
+
+  // TODO: Remove histogram_of_words_to_remove from
+  //       m_document_storage[storage_index].word_histogram.
 
   for (const auto & histogram_entry : histogram_of_words_to_remove.histogram_entries)
   {
@@ -929,7 +907,7 @@ remove_words_from_document(
     }
   }
 
-  m_document_storage[storage_index].inverse_magnitude =
+  m_document_storage[storage_index].word_histogram.inverse_magnitude =
     static_cast<frequency_t>(1.0 / normalization.compute_magnitude());
 }
 
@@ -965,7 +943,7 @@ query_database(
       const storage_index_t storage_index = inverted_index_entry.storage_index;
       const frequency_t frequency =
         inverted_index_entry.frequency *
-        m_document_storage[storage_index].inverse_magnitude;
+        m_document_storage[storage_index].word_histogram.inverse_magnitude;
 
       m_histogram_distances[storage_index].add_term(
         query_frequency, frequency, idf_weight);
