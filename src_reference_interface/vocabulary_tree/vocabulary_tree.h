@@ -409,14 +409,31 @@ load_vocabulary_from_file_snavely_vocab_tree_2_format(
     throw std::runtime_error("Failed to open vocabulary tree file");
   }
 
+  size_t num_read = 0;
+
   int branch_factor = 0;
-  fread(&branch_factor, sizeof(int), 1, file);
+  num_read = fread(&branch_factor, sizeof(int), 1, file);
+  if (num_read != 1)
+  {
+    fclose(file);
+    throw std::runtime_error("Failed to read branch factor");
+  }
 
   int tree_depth = 0;
-  fread(&tree_depth, sizeof(int), 1, file);
+  num_read = fread(&tree_depth, sizeof(int), 1, file);
+  if (num_read != 1)
+  {
+    fclose(file);
+    throw std::runtime_error("Failed to read tree depth");
+  }
 
   int descriptor_dimension = 0;
-  fread(&descriptor_dimension, sizeof(int), 1, file);
+  num_read = fread(&descriptor_dimension, sizeof(int), 1, file);
+  if (num_read != 1)
+  {
+    fclose(file);
+    throw std::runtime_error("Failed to read descriptor dimension");
+  }
 
   if (descriptor_dimension != Descriptor::NumDimensions)
   {
@@ -453,14 +470,24 @@ load_vocabulary_from_file_snavely_vocab_tree_2_format(
 
   // NOTE: Unused for root node.
   char interior = 0;
-  fread(&interior, sizeof(char), 1, file);
+  num_read = fread(&interior, sizeof(char), 1, file);
+  if (num_read != 1)
+  {
+    fclose(file);
+    throw std::runtime_error("Failed to read interior flag");
+  }
 
   // NOTE: Unused for root node.
-  fread(
+  num_read = fread(
     m_descriptors[0].values,
     sizeof(typename Descriptor::DimensionType),
     Descriptor::NumDimensions,
     file);
+  if (num_read != Descriptor::NumDimensions)
+  {
+    fclose(file);
+    throw std::runtime_error("Failed to read descriptor values");
+  }
   // After reading in the descriptor for the root node, set it to zero as it is
   // unused in any further operation.
   memset(
@@ -470,12 +497,22 @@ load_vocabulary_from_file_snavely_vocab_tree_2_format(
 
   // NOTE: Unused for root node.
   float weight = 0;
-  fread(&weight, sizeof(float), 1, file);
+  num_read = fread(&weight, sizeof(float), 1, file);
+  if (num_read != 1)
+  {
+    fclose(file);
+    throw std::runtime_error("Failed to read weight");
+  }
 
   // Read in the flags that indicate which children exist.
   std::vector<char> children_flags;
   children_flags.resize(branch_factor);
-  fread(&children_flags[0], sizeof(char), branch_factor, file);
+  num_read = fread(&children_flags[0], sizeof(char), branch_factor, file);
+  if (num_read != branch_factor)
+  {
+    fclose(file);
+    throw std::runtime_error("Failed to read children flags");
+  }
 
   // Count the number of children that exist, and reserve space for them in the
   // vector of Nodes.
@@ -1111,22 +1148,39 @@ load_vocabulary_from_file_snavely_vocab_tree_2_format_helper(
   const int branch_factor,
   word_t * const next_available_word)
 {
+  size_t num_read = 0;
+
   // Read the flag which indicates whether this node is an interior node or a
   // leaf node.
   char interior = 0;
-  fread(&interior, sizeof(char), 1, file);
+  num_read = fread(&interior, sizeof(char), 1, file);
+  if (num_read != 1)
+  {
+    fclose(file);
+    throw std::runtime_error("Failed to read interior flag");
+  }
 
   // Read this node's descriptor into its corresponding position within the
   // descriptors vector.
-  fread(
+  num_read = fread(
     m_descriptors[node_index].values,
     sizeof(typename Descriptor::DimensionType),
     Descriptor::NumDimensions,
     file);
+  if (num_read != Descriptor::NumDimensions)
+  {
+    fclose(file);
+    throw std::runtime_error("Failed to read descriptor values");
+  }
 
   // NOTE: Node weights are ignored.
   float weight = 0;
-  fread(&weight, sizeof(float), 1, file);
+  num_read = fread(&weight, sizeof(float), 1, file);
+  if (num_read != 1)
+  {
+    fclose(file);
+    throw std::runtime_error("Failed to read weight");
+  }
 
   if (interior == 1)
   {
@@ -1140,7 +1194,12 @@ load_vocabulary_from_file_snavely_vocab_tree_2_format_helper(
     // Read in the flags that indicate which children exist.
     std::vector<char> children_flags;
     children_flags.resize(branch_factor);
-    fread(&children_flags[0], sizeof(char), branch_factor, file);
+    num_read = fread(&children_flags[0], sizeof(char), branch_factor, file);
+    if (num_read != branch_factor)
+    {
+      fclose(file);
+      throw std::runtime_error("Failed to read children flags");
+    }
 
     // Count the number of children that exist, and reserve space for them in
     // the vector of Nodes.
@@ -1184,13 +1243,29 @@ load_vocabulary_from_file_snavely_vocab_tree_2_format_helper(
 
     // NOTE: Any stored image data is ignored.
     int num_images = 0;
-    fread(&num_images, sizeof(int), 1, file);
+    num_read = fread(&num_images, sizeof(int), 1, file);
+    if (num_read != 1)
+    {
+      fclose(file);
+      throw std::runtime_error("Failed to read number of images");
+    }
     for (int i = 0; i < num_images; ++i)
     {
       int image = 0;
-      fread(&image, sizeof(int), 1, file);
-      float count = 0;
-      fread(&count, sizeof(float), 1, file);
+      num_read = fread(&image, sizeof(int), 1, file);
+      if (num_read != 1)
+      {
+        fclose(file);
+        throw std::runtime_error("Failed to read image index");
+      }
+
+      float frequency = 0;
+      num_read = fread(&frequency, sizeof(float), 1, file);
+      if (num_read != 1)
+      {
+        fclose(file);
+        throw std::runtime_error("Failed to read frequency");
+      }
     }
   }
 }
