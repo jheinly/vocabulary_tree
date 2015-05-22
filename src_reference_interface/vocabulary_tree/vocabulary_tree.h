@@ -75,6 +75,11 @@ class VocabularyTree : public VocabularyTreeTypes
         frequency(frequency)
       {}
 
+      static inline bool less(
+        const HistogramEntry & a,
+        const HistogramEntry & b)
+      { return a.word < b.word; }
+
       word_t word;
       frequency_t frequency;
     };
@@ -687,6 +692,12 @@ compute_word_histogram(
   // Compute the inverse magnitude.
   word_histogram.inverse_magnitude =
     static_cast<frequency_t>(1.0 / normalization.compute_magnitude());
+
+  // Sort the histogram entries.
+  std::sort(
+    word_histogram.histogram_entries.begin(),
+    word_histogram.histogram_entries.end(),
+    HistogramEntry::less);
 }
 
 template<
@@ -743,7 +754,8 @@ remove_document_from_database(
   for (const auto & histogram_entry : word_histogram.histogram_entries)
   {
     // Find the inverted index entry for this histogram entry, and erase it.
-    auto & current_inverted_indices = m_word_inverted_indices[histogram_entry.word];
+    std::vector<InvertedIndexEntry> & current_inverted_indices =
+      m_word_inverted_indices[histogram_entry.word];
     bool found = false;
     for (auto iter = current_inverted_indices.begin();
       iter != current_inverted_indices.end();
@@ -805,45 +817,113 @@ add_words_to_document(
   }
   const storage_index_t storage_index = found_iter->second;
 
+  WordHistogram & existing_word_histogram =
+    m_document_storage[storage_index].word_histogram;
+
   const frequency_t initial_magnitude = static_cast<frequency_t>(
-    1.0 / m_document_storage[storage_index].word_histogram.inverse_magnitude);
+    1.0 / existing_word_histogram.inverse_magnitude);
   HistogramNormalization normalization(initial_magnitude);
 
-  // TODO: Add histogram_of_words_to_add to
-  //       m_document_storage[storage_index].word_histogram.
+  std::vector<HistogramEntry> & existing_histogram_entries =
+    existing_word_histogram.histogram_entries;
+  const std::vector<HistogramEntry> & histogram_entries_to_add =
+    histogram_of_words_to_add.histogram_entries;
 
-  for (const auto & histogram_entry : histogram_of_words_to_add.histogram_entries)
+  size_t existing_entry_idx = 0;
+  size_t entry_to_add_idx = 0;
+
+  // Both word histograms are sorted based on the word indices, so iterate
+  // through them similar to how merge sort would combine two sorted lists.
+  while (existing_entry_idx < existing_histogram_entries.size() &&
+    entry_to_add_idx < histogram_entries_to_add.size())
   {
-    auto & current_inverted_indices =
-      m_word_inverted_indices[histogram_entry.word];
-    bool found = false;
+    HistogramEntry & existing_entry =
+      existing_histogram_entries[existing_entry_idx];
+    const HistogramEntry & entry_to_add =
+      histogram_entries_to_add[entry_to_add_idx];
 
-    // Search for an existing entry in the inverted index.
-    for (auto & inverted_index_entry : current_inverted_indices)
+    // If the word to add is less than the existing word, we have found the
+    // position where the new word should be inserted.
+    if (entry_to_add.word < existing_entry.word)
     {
-      if (inverted_index_entry.storage_index == storage_index)
-      {
-        const frequency_t new_frequency =
-          inverted_index_entry.frequency + histogram_entry.frequency;
-        normalization.update_term(
-          inverted_index_entry.frequency,
-          new_frequency);
-        inverted_index_entry.frequency = new_frequency;
-        found = true;
-        break;
-      }
+      normalization.add_term(entry_to_add.frequency);
+      
+      // Add the new entry to the existing word histogram in storage.
+      existing_histogram_entries.insert(
+        existing_histogram_entries.begin() + existing_entry_idx,
+        entry_to_add);
+      // Create a new inverted index entry for this word.
+      m_word_inverted_indices[entry_to_add.word].push_back(
+        InvertedIndexEntry(storage_index, entry_to_add.frequency));
+
+      // Advance to the next word to add, as well as advance the existing entry
+      // index as we have just inserted an element.
+      ++existing_entry_idx;
+      ++entry_to_add_idx;
     }
-    // If an existing entry was not found, create a new inverted index entry for
-    // this word-document pair.
-    if (!found)
+    else if (entry_to_add.word > existing_entry.word)
     {
-      current_inverted_indices.push_back(
-        InvertedIndexEntry(storage_index, histogram_entry.frequency));
-      normalization.add_term(histogram_entry.frequency);
+      // We have not found a valid insert position, so advance to the next entry
+      // in the existing word histogram.
+      ++existing_entry_idx;
+    }
+    else // if (entry_to_add.word == existing_entry.word)
+    {
+      // If the words are equal, we can add their frequencies.
+      const frequency_t updated_frequency =
+        existing_entry.frequency + entry_to_add.frequency;
+      
+      normalization.update_term(existing_entry.frequency, updated_frequency);
+
+      // Update the entry in the existing word histogram in storage.
+      existing_entry.frequency = updated_frequency;
+
+      // Update the entry in the inverted index.
+      std::vector<InvertedIndexEntry> & current_inverted_indices =
+        m_word_inverted_indices[entry_to_add.word];
+      bool found = false;
+      for (auto & inverted_index_entry : current_inverted_indices)
+      {
+        if (inverted_index_entry.storage_index == storage_index)
+        {
+          inverted_index_entry.frequency = updated_frequency;
+          found = true;
+          break;
+        }
+      }
+      if (!found)
+      {
+        // There was a matching entry in the existing word histogram, but we
+        // failed to find a matching entry in the inverted index.
+        throw std::runtime_error(
+          "VocabularyTree::add_words_to_document could not find inverted index entry");
+      }
+      
+      // Advance to the next word to add as well as the next existing entry
+      // index.
+      ++existing_entry_idx;
+      ++entry_to_add_idx;
     }
   }
+  // The previous loop could have ended because we reached the end of the
+  // existing word histogram. So, loop over any remaining entries to add.
+  while (entry_to_add_idx < histogram_entries_to_add.size())
+  {
+    const HistogramEntry & entry_to_add =
+      histogram_entries_to_add[entry_to_add_idx];
 
-  m_document_storage[storage_index].word_histogram.inverse_magnitude =
+    normalization.add_term(entry_to_add.frequency);
+
+    // Add the entry to the existing word histogram in storage.
+    existing_histogram_entries.push_back(entry_to_add);
+    // Create a new inverted index entry for this word.
+    m_word_inverted_indices[entry_to_add.word].push_back(
+      InvertedIndexEntry(storage_index, entry_to_add.frequency));
+
+    ++entry_to_add_idx;
+  }
+
+  existing_word_histogram.inverse_magnitude =
     static_cast<frequency_t>(1.0 / normalization.compute_magnitude());
 }
 
@@ -865,49 +945,135 @@ remove_words_from_document(
   }
   const storage_index_t storage_index = found_iter->second;
 
+  WordHistogram & existing_word_histogram =
+    m_document_storage[storage_index].word_histogram;
+
   const frequency_t initial_magnitude = static_cast<frequency_t>(
-    1.0 / m_document_storage[storage_index].word_histogram.inverse_magnitude);
+    1.0 / existing_word_histogram.inverse_magnitude);
   HistogramNormalization normalization(initial_magnitude);
 
-  // TODO: Remove histogram_of_words_to_remove from
-  //       m_document_storage[storage_index].word_histogram.
+  std::vector<HistogramEntry> & existing_histogram_entries =
+    existing_word_histogram.histogram_entries;
+  const std::vector<HistogramEntry> & histogram_entries_to_remove =
+    histogram_of_words_to_remove.histogram_entries;
 
-  for (const auto & histogram_entry : histogram_of_words_to_remove.histogram_entries)
+  size_t existing_entry_idx = 0;
+  size_t entry_to_remove_idx = 0;
+
+  // Both word histograms are sorted based on the word indices, so iterate
+  // through them similar to how merge sort would combine two sorted lists.
+  while (existing_entry_idx < existing_histogram_entries.size() &&
+    entry_to_remove_idx < histogram_entries_to_remove.size())
   {
-    auto & current_inverted_indices =
-      m_word_inverted_indices[histogram_entry.word];
-    bool found = false;
-    for (auto iter = current_inverted_indices.begin();
-      iter != current_inverted_indices.end();
-      ++iter)
+    HistogramEntry & existing_entry =
+      existing_histogram_entries[existing_entry_idx];
+    const HistogramEntry & entry_to_remove =
+      histogram_entries_to_remove[entry_to_remove_idx];
+
+    if (entry_to_remove.word == existing_entry.word)
     {
-      if (iter->storage_index == storage_index)
+      // If the words are equal, subtract the frequency to remove from the
+      // existing frequency.
+      const frequency_t updated_frequency =
+        existing_entry.frequency - entry_to_remove.frequency;
+
+      normalization.update_term(existing_entry.frequency, updated_frequency);
+
+      if (updated_frequency == 0) // TODO: Make sure that this comparison works.
       {
-        const frequency_t new_frequency =
-          iter->frequency - histogram_entry.frequency;
-        normalization.update_term(
-          iter->frequency,
-          new_frequency);
-        if (new_frequency == 0) // TODO: Make sure that this comparison works.
+        // Erase the existing histogram entry.
+        existing_histogram_entries.erase(
+          existing_histogram_entries.begin() + existing_entry_idx);
+
+        // Erase the entry in the inverted index.
+        std::vector<InvertedIndexEntry> & current_inverted_indices =
+          m_word_inverted_indices[entry_to_remove.word];
+        bool found = false;
+        for (auto iter = current_inverted_indices.begin();
+          iter != current_inverted_indices.end();
+          ++iter)
         {
-          current_inverted_indices.erase(iter);
+          if (iter->storage_index == storage_index)
+          {
+            current_inverted_indices.erase(iter);
+            found = true;
+            break;
+          }
         }
-        else
+        if (!found)
         {
-          iter->frequency = new_frequency;
+          // There was a matching entry in the existing word histogram, but we
+          // failed to find a matching entry in the inverted index.
+          throw std::runtime_error(
+            "VocabularyTree::remove_words_from_document could not find inverted index entry");
         }
-        found = true;
-        break;
+
+        // Advance to the next entry to remove. We don't need to advance the
+        // existing entry index as we have just removed the entry at the current
+        // position.
+        ++entry_to_remove_idx;
+      }
+      else if (updated_frequency > 0)
+      {
+        // Update the frequency in the existing word histogram in storage.
+        existing_entry.frequency = updated_frequency;
+
+        // Update the entry in the inverted index.
+        std::vector<InvertedIndexEntry> & current_inverted_indices =
+          m_word_inverted_indices[entry_to_remove.word];
+        bool found = false;
+        for (auto & inverted_index_entry : current_inverted_indices)
+        {
+          if (inverted_index_entry.storage_index == storage_index)
+          {
+            inverted_index_entry.frequency = updated_frequency;
+            found = true;
+            break;
+          }
+        }
+        if (!found)
+        {
+          // There was a matching entry in the existing word histogram, but we
+          // failed to find a matching entry in the inverted index.
+          throw std::runtime_error(
+            "VocabularyTree::remove_words_from_document could not find inverted index entry");
+        }
+
+        // Advace to the next word to remove, as well as advance the existing
+        // entry index as we have just updated the current existing entry.
+        ++existing_entry_idx;
+        ++entry_to_remove_idx;
+      }
+      else // if (updated_frequency < 0)
+      {
+        throw std::runtime_error(
+          "VocabularyTree::remove_words_from_document could not remove the requested frequency");
       }
     }
-    if (!found)
+    else if (entry_to_remove.word > existing_entry.word)
     {
+      // We have not found the matching existing word yet, so advance to the
+      // next entry in the existing word histogram.
+      ++existing_entry_idx;
+    }
+    else // if (entry_to_remove.word < existing_entry.word)
+    {
+      // If the word to add is less than the existing word, then there is an
+      // error as the word to be removed should have been contained within the
+      // existing word histogram.
       throw std::runtime_error(
-        "VocabularyTree::remove_words_from_document could not find inverted index entry for document");
+        "VocabularyTree::remove_words_from_document could not find existing word entry");
     }
   }
+  if (entry_to_remove_idx < histogram_entries_to_remove.size())
+  {
+    // If we've processed all of the existing word histogram entries, but there
+    // are still words to remove, there is an error.
+    throw std::runtime_error(
+      "VocabularyTree::remove_words_from_document could not find existing word entry");
+  }
 
-  m_document_storage[storage_index].word_histogram.inverse_magnitude =
+  existing_word_histogram.inverse_magnitude =
     static_cast<frequency_t>(1.0 / normalization.compute_magnitude());
 }
 
@@ -936,7 +1102,7 @@ query_database(
 
     const frequency_t idf_weight = m_word_idf_weights[histogram_entry.word];
 
-    const auto & current_inverted_indices =
+    const std::vector<InvertedIndexEntry> & current_inverted_indices =
       m_word_inverted_indices[histogram_entry.word];
     for (const auto & inverted_index_entry : current_inverted_indices)
     {
