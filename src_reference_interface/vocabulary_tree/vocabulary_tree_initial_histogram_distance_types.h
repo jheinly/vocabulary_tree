@@ -1,6 +1,6 @@
 #pragma once
-#ifndef VOCABULARY_TREE_HISTOGRAM_DISTANCE_TYPES_H
-#define VOCABULARY_TREE_HISTOGRAM_DISTANCE_TYPES_H
+#ifndef VOCABULARY_TREE_INITIAL_HISTOGRAM_DISTANCE_TYPES_H
+#define VOCABULARY_TREE_INITIAL_HISTOGRAM_DISTANCE_TYPES_H
 
 #include <vocabulary_tree/vocabulary_tree_types.h>
 #include <algorithm>
@@ -8,18 +8,19 @@
 
 /*
 This file defines classes that can be used as template arguments for
-VocabularyTree's HistogramDistance template argument. Conceptually, each class
-defines a different metric that can be used to compute the distance between two
-word histograms. However, based on the way that VocabularyTree performs its
-scoring using the inverted index, distance functions that need to consider the
-difference between corresponding histogram bins where one of the bins may be
-zero cannot be correctly implemented (e.g. L1 and L2) as the add_term() function
-will only be called when both histograms have non-zero values in the same bin.
+VocabularyTree's InitialHistogramDistance template argument. Conceptually, each
+class defines a different metric that can be used to compute the initial
+distance between two word histograms. However, based on the way that
+VocabularyTree performs its initial scoring using the inverted index, distance
+functions that need to consider the difference between corresponding histogram
+bins where one of the bins may be zero cannot be correctly implemented (e.g. L1
+and L2) as the add_term() function will only be called when both histograms have
+non-zero values in the same bin.
 */
 
 namespace vocabulary_tree {
 
-namespace histogram_distance {
+namespace initial_histogram_distance {
 
 // Dot product distance between two histograms (corresponding bins are
 // multiplied together, and then summed to a single value).
@@ -61,9 +62,7 @@ class Intersect : public VocabularyTreeTypes
       const frequency_t frequency1,
       const frequency_t frequency2,
       const frequency_t weight)
-    {
-      m_magnitude += weight * std::min(frequency1, frequency2);
-    }
+    { m_magnitude += weight * std::min(frequency1, frequency2); }
 
     inline frequency_t compute_magnitude() const
     { return m_magnitude; }
@@ -75,8 +74,8 @@ class Intersect : public VocabularyTreeTypes
     frequency_t m_magnitude;
 };
 
-} // namespace histogram_distance
+} // namespace initial_histogram_distance
 
 } // namespace vocabulary_tree
 
-#endif // VOCABULARY_TREE_HISTOGRAM_DISTANCE_TYPES_H
+#endif // VOCABULARY_TREE_INITIAL_HISTOGRAM_DISTANCE_TYPES_H

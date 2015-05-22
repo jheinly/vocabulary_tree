@@ -5,7 +5,8 @@
 #include <vocabulary_tree/vocabulary_tree_types.h>
 #include <vocabulary_tree/vocabulary_tree_descriptor_types.h>
 #include <vocabulary_tree/vocabulary_tree_histogram_normalization_types.h>
-#include <vocabulary_tree/vocabulary_tree_histogram_distance_types.h>
+#include <vocabulary_tree/vocabulary_tree_initial_histogram_distance_types.h>
+#include <vocabulary_tree/vocabulary_tree_refined_histogram_distance_types.h>
 #include <vocabulary_tree/indexed_storage.h>
 #include <cmath>
 #include <cstdio>
@@ -25,7 +26,8 @@ NOTE: For ease of programming, define the class in the following manner:
         typedef vocabulary_tree::VocabularyTree<
           vocabulary_tree::descriptor::Sift,
           vocabulary_tree::histogram_normalization::L1,
-          vocabulary_tree::histogram_distance::Intersect> VocTree;
+          vocabulary_tree::initial_histogram_distance::Intersect,
+          vocabulary_tree::refined_histogram_distance::ChiSquared> VocTree;
       This allows an instance of the class to be declared as:
         VocTree voc_tree;
       Relevant types can also be accessed as follows:
@@ -56,7 +58,8 @@ namespace vocabulary_tree {
 template<
   typename Descriptor = descriptor::Sift,
   typename HistogramNormalization = histogram_normalization::L1,
-  typename HistogramDistance = histogram_distance::Intersect>
+  typename InitialHistogramDistance = initial_histogram_distance::Intersect,
+  typename RefinedHistogramDistance = refined_histogram_distance::ChiSquared>
 class VocabularyTree : public VocabularyTreeTypes
 {
   public:
@@ -100,10 +103,15 @@ class VocabularyTree : public VocabularyTreeTypes
     // match.
     struct QueryResult
     {
-      static inline bool greater(
+      static inline bool initial_sort(
         const QueryResult & a,
         const QueryResult & b)
       { return a.score > b.score; }
+
+      static inline bool refined_sort(
+        const QueryResult & a,
+        const QueryResult & b)
+      { return a.score < b.score; }
 
       document_id_t document_id;
       frequency_t score;
@@ -197,8 +205,14 @@ class VocabularyTree : public VocabularyTreeTypes
     // Query the database by returning a list of the most similar documents.
     void query_database(
       const WordHistogram & query_word_histogram,
-      const index_t max_num_results,
-      std::vector<QueryResult> & query_results) const;
+      std::vector<QueryResult> & query_results,
+      const index_t max_num_results) const;
+
+    // Refine the list of initial query results.
+    void refine_query_results(
+      const WordHistogram & query_word_histogram,
+      std::vector<QueryResult> & query_results,
+      const index_t num_refined_results);
 
     // Compute and update the IDF (inverse document frequency) weights for the
     // words in the database.
@@ -349,7 +363,7 @@ class VocabularyTree : public VocabularyTreeTypes
 
     // This is used to keep track of the distances between a query document and
     // all of the database document.
-    mutable std::vector<HistogramDistance> m_histogram_distances;
+    mutable std::vector<InitialHistogramDistance> m_histogram_distances;
 
     // This is used in the convenience functions.
     mutable std::vector<word_t> m_words;
@@ -361,8 +375,13 @@ class VocabularyTree : public VocabularyTreeTypes
 template<
   typename Descriptor,
   typename HistogramNormalization,
-  typename HistogramDistance>
-VocabularyTree<Descriptor, HistogramNormalization, HistogramDistance>::
+  typename InitialHistogramDistance,
+  typename RefinedHistogramDistance>
+VocabularyTree<
+  Descriptor,
+  HistogramNormalization,
+  InitialHistogramDistance,
+  RefinedHistogramDistance>::
 VocabularyTree()
 : m_num_words_in_vocabulary(0)
 {}
@@ -370,8 +389,13 @@ VocabularyTree()
 template<
   typename Descriptor,
   typename HistogramNormalization,
-  typename HistogramDistance>
-VocabularyTree<Descriptor, HistogramNormalization, HistogramDistance>::
+  typename InitialHistogramDistance,
+  typename RefinedHistogramDistance>
+VocabularyTree<
+  Descriptor,
+  HistogramNormalization,
+  InitialHistogramDistance,
+  RefinedHistogramDistance>::
 ~VocabularyTree()
 {
   m_descriptors.clear();
@@ -388,8 +412,13 @@ VocabularyTree<Descriptor, HistogramNormalization, HistogramDistance>::
 template<
   typename Descriptor,
   typename HistogramNormalization,
-  typename HistogramDistance>
-void VocabularyTree<Descriptor, HistogramNormalization, HistogramDistance>::
+  typename InitialHistogramDistance,
+  typename RefinedHistogramDistance>
+void VocabularyTree<
+  Descriptor,
+  HistogramNormalization,
+  InitialHistogramDistance,
+  RefinedHistogramDistance>::
 load_vocabulary_from_file_snavely_vocab_tree_2_format(
   const std::string & vocabulary_file_path)
 {
@@ -522,8 +551,13 @@ load_vocabulary_from_file_snavely_vocab_tree_2_format(
 template<
   typename Descriptor,
   typename HistogramNormalization,
-  typename HistogramDistance>
-void VocabularyTree<Descriptor, HistogramNormalization, HistogramDistance>::
+  typename InitialHistogramDistance,
+  typename RefinedHistogramDistance>
+void VocabularyTree<
+  Descriptor,
+  HistogramNormalization,
+  InitialHistogramDistance,
+  RefinedHistogramDistance>::
 add_document_to_database(
   const typename Descriptor::DimensionType * const descriptors,
   const index_t num_descriptors,
@@ -544,8 +578,13 @@ add_document_to_database(
 template<
   typename Descriptor,
   typename HistogramNormalization,
-  typename HistogramDistance>
-void VocabularyTree<Descriptor, HistogramNormalization, HistogramDistance>::
+  typename InitialHistogramDistance,
+  typename RefinedHistogramDistance>
+void VocabularyTree<
+  Descriptor,
+  HistogramNormalization,
+  InitialHistogramDistance,
+  RefinedHistogramDistance>::
 add_words_to_document(
   const typename Descriptor::DimensionType * const descriptors_to_add,
   const index_t num_descriptors_to_add,
@@ -566,8 +605,13 @@ add_words_to_document(
 template<
   typename Descriptor,
   typename HistogramNormalization,
-  typename HistogramDistance>
-void VocabularyTree<Descriptor, HistogramNormalization, HistogramDistance>::
+  typename InitialHistogramDistance,
+  typename RefinedHistogramDistance>
+void VocabularyTree<
+  Descriptor,
+  HistogramNormalization,
+  InitialHistogramDistance,
+  RefinedHistogramDistance>::
 remove_words_from_document(
   const typename Descriptor::DimensionType * const descriptors_to_remove,
   const index_t num_descriptors_to_remove,
@@ -588,8 +632,13 @@ remove_words_from_document(
 template<
   typename Descriptor,
   typename HistogramNormalization,
-  typename HistogramDistance>
-void VocabularyTree<Descriptor, HistogramNormalization, HistogramDistance>::
+  typename InitialHistogramDistance,
+  typename RefinedHistogramDistance>
+void VocabularyTree<
+  Descriptor,
+  HistogramNormalization,
+  InitialHistogramDistance,
+  RefinedHistogramDistance>::
 query_database(
   const typename Descriptor::DimensionType * const query_descriptors,
   const index_t num_query_descriptors,
@@ -612,8 +661,13 @@ query_database(
 template<
   typename Descriptor,
   typename HistogramNormalization,
-  typename HistogramDistance>
-void VocabularyTree<Descriptor, HistogramNormalization, HistogramDistance>::
+  typename InitialHistogramDistance,
+  typename RefinedHistogramDistance>
+void VocabularyTree<
+  Descriptor,
+  HistogramNormalization,
+  InitialHistogramDistance,
+  RefinedHistogramDistance>::
 compute_words(
   const typename Descriptor::DimensionType * const descriptors,
   const index_t num_descriptors,
@@ -654,8 +708,13 @@ compute_words(
 template<
   typename Descriptor,
   typename HistogramNormalization,
-  typename HistogramDistance>
-void VocabularyTree<Descriptor, HistogramNormalization, HistogramDistance>::
+  typename InitialHistogramDistance,
+  typename RefinedHistogramDistance>
+void VocabularyTree<
+  Descriptor,
+  HistogramNormalization,
+  InitialHistogramDistance,
+  RefinedHistogramDistance>::
 compute_word_histogram(
   const std::vector<word_t> & words,
   WordHistogram & word_histogram) const
@@ -703,8 +762,13 @@ compute_word_histogram(
 template<
   typename Descriptor,
   typename HistogramNormalization,
-  typename HistogramDistance>
-void VocabularyTree<Descriptor, HistogramNormalization, HistogramDistance>::
+  typename InitialHistogramDistance,
+  typename RefinedHistogramDistance>
+void VocabularyTree<
+  Descriptor,
+  HistogramNormalization,
+  InitialHistogramDistance,
+  RefinedHistogramDistance>::
 add_document_to_database(
   const WordHistogram & word_histogram,
   const document_id_t new_document_id)
@@ -734,8 +798,13 @@ add_document_to_database(
 template<
   typename Descriptor,
   typename HistogramNormalization,
-  typename HistogramDistance>
-void VocabularyTree<Descriptor, HistogramNormalization, HistogramDistance>::
+  typename InitialHistogramDistance,
+  typename RefinedHistogramDistance>
+void VocabularyTree<
+  Descriptor,
+  HistogramNormalization,
+  InitialHistogramDistance,
+  RefinedHistogramDistance>::
 remove_document_from_database(
   const document_id_t document_id)
 {
@@ -783,8 +852,13 @@ remove_document_from_database(
 template<
   typename Descriptor,
   typename HistogramNormalization,
-  typename HistogramDistance>
-bool VocabularyTree<Descriptor, HistogramNormalization, HistogramDistance>::
+  typename InitialHistogramDistance,
+  typename RefinedHistogramDistance>
+bool VocabularyTree<
+  Descriptor,
+  HistogramNormalization,
+  InitialHistogramDistance,
+  RefinedHistogramDistance>::
 is_document_in_database(
   const document_id_t document_id) const
 {
@@ -802,8 +876,13 @@ is_document_in_database(
 template<
   typename Descriptor,
   typename HistogramNormalization,
-  typename HistogramDistance>
-void VocabularyTree<Descriptor, HistogramNormalization, HistogramDistance>::
+  typename InitialHistogramDistance,
+  typename RefinedHistogramDistance>
+void VocabularyTree<
+  Descriptor,
+  HistogramNormalization,
+  InitialHistogramDistance,
+  RefinedHistogramDistance>::
 add_words_to_document(
   const WordHistogram & histogram_of_words_to_add,
   const document_id_t document_id)
@@ -930,8 +1009,13 @@ add_words_to_document(
 template<
   typename Descriptor,
   typename HistogramNormalization,
-  typename HistogramDistance>
-void VocabularyTree<Descriptor, HistogramNormalization, HistogramDistance>::
+  typename InitialHistogramDistance,
+  typename RefinedHistogramDistance>
+void VocabularyTree<
+  Descriptor,
+  HistogramNormalization,
+  InitialHistogramDistance,
+  RefinedHistogramDistance>::
 remove_words_from_document(
   const WordHistogram & histogram_of_words_to_remove,
   const document_id_t document_id)
@@ -1080,12 +1164,17 @@ remove_words_from_document(
 template<
   typename Descriptor,
   typename HistogramNormalization,
-  typename HistogramDistance>
-void VocabularyTree<Descriptor, HistogramNormalization, HistogramDistance>::
+  typename InitialHistogramDistance,
+  typename RefinedHistogramDistance>
+void VocabularyTree<
+  Descriptor,
+  HistogramNormalization,
+  InitialHistogramDistance,
+  RefinedHistogramDistance>::
 query_database(
   const WordHistogram & query_word_histogram,
-  const index_t max_num_results,
-  std::vector<QueryResult> & query_results) const
+  std::vector<QueryResult> & query_results,
+  const index_t max_num_results) const
 {
   const storage_index_t document_storage_capacity =
     m_document_storage.capacity();
@@ -1132,7 +1221,7 @@ query_database(
     query_results.begin(),
     query_results.begin() + num_results,
     query_results.end(),
-    QueryResult::greater);
+    QueryResult::initial_sort);
   query_results.resize(num_results);
 
   // Remove any database results that have 0 overlap with the query document.
@@ -1149,8 +1238,63 @@ query_database(
 template<
   typename Descriptor,
   typename HistogramNormalization,
-  typename HistogramDistance>
-void VocabularyTree<Descriptor, HistogramNormalization, HistogramDistance>::
+  typename InitialHistogramDistance,
+  typename RefinedHistogramDistance>
+void VocabularyTree<
+  Descriptor,
+  HistogramNormalization,
+  InitialHistogramDistance,
+  RefinedHistogramDistance>::
+refine_query_results(
+  const WordHistogram & query_word_histogram,
+  std::vector<QueryResult> & query_results,
+  const index_t num_refined_results)
+{
+  for (auto & query_result : query_results)
+  {
+    // Find the storage index for this query result.
+    const auto & found_iter =
+      m_document_to_storage_indices.find(query_result.document_id);
+    if (found_iter == m_document_to_storage_indices.end())
+    {
+      throw std::runtime_error(
+        "VocabularyTree::refine_query_results could not find document");
+    }
+    const storage_index_t storage_index = found_iter->second;
+    const WordHistogram & result_word_histogram =
+      m_document_storage[storage_index].word_histogram;
+
+    RefinedHistogramDistance refined_distance;
+
+    // TODO: Iterate through the histograms and update refined_distance.
+    // TODO: Make sure to use the inverse magnitudes and IDF weights.
+    // TODO: Store the resulting distance back into query_result.
+  }
+
+  // Determine the number of results that can be returned.
+  const index_t num_results = std::min<index_t>(
+    num_refined_results,
+    static_cast<index_t>(query_results.size()));
+
+  // Find the num_results best query results.
+  std::partial_sort(
+    query_results.begin(),
+    query_results.begin() + num_results,
+    query_results.end(),
+    QueryResult::refined_sort);
+  query_results.resize(num_results);
+}
+
+template<
+  typename Descriptor,
+  typename HistogramNormalization,
+  typename InitialHistogramDistance,
+  typename RefinedHistogramDistance>
+void VocabularyTree<
+  Descriptor,
+  HistogramNormalization,
+  InitialHistogramDistance,
+  RefinedHistogramDistance>::
 compute_idf_weights()
 {
   // IDF weight for a word
@@ -1189,8 +1333,13 @@ compute_idf_weights()
 template<
   typename Descriptor,
   typename HistogramNormalization,
-  typename HistogramDistance>
-void VocabularyTree<Descriptor, HistogramNormalization, HistogramDistance>::
+  typename InitialHistogramDistance,
+  typename RefinedHistogramDistance>
+void VocabularyTree<
+  Descriptor,
+  HistogramNormalization,
+  InitialHistogramDistance,
+  RefinedHistogramDistance>::
 reset_idf_weights()
 {
   m_word_idf_weights.resize(m_num_words_in_vocabulary);
@@ -1203,8 +1352,13 @@ reset_idf_weights()
 template<
   typename Descriptor,
   typename HistogramNormalization,
-  typename HistogramDistance>
-void VocabularyTree<Descriptor, HistogramNormalization, HistogramDistance>::
+  typename InitialHistogramDistance,
+  typename RefinedHistogramDistance>
+void VocabularyTree<
+  Descriptor,
+  HistogramNormalization,
+  InitialHistogramDistance,
+  RefinedHistogramDistance>::
 clear_database()
 {
   m_word_inverted_indices.resize(m_num_words_in_vocabulary);
@@ -1217,8 +1371,13 @@ clear_database()
 template<
   typename Descriptor,
   typename HistogramNormalization,
-  typename HistogramDistance>
-VocabularyTreeTypes::index_t VocabularyTree<Descriptor, HistogramNormalization, HistogramDistance>::
+  typename InitialHistogramDistance,
+  typename RefinedHistogramDistance>
+VocabularyTreeTypes::index_t VocabularyTree<
+  Descriptor,
+  HistogramNormalization,
+  InitialHistogramDistance,
+  RefinedHistogramDistance>::
 compute_best_child_node(
   const typename Descriptor::DimensionType * const descriptor,
   const Node & node) const
@@ -1247,8 +1406,13 @@ compute_best_child_node(
 template<
   typename Descriptor,
   typename HistogramNormalization,
-  typename HistogramDistance>
-void VocabularyTree<Descriptor, HistogramNormalization, HistogramDistance>::
+  typename InitialHistogramDistance,
+  typename RefinedHistogramDistance>
+void VocabularyTree<
+  Descriptor,
+  HistogramNormalization,
+  InitialHistogramDistance,
+  RefinedHistogramDistance>::
 load_vocabulary_from_file_snavely_vocab_tree_2_format_helper(
   FILE * file,
   const index_t node_index,

@@ -38,8 +38,9 @@ else() # if(NOT VOCABULARY_TREE_USE_CONDITIONALLY_ENABLED_INTERFACE)
     ${SRC_DIR}/vocabulary_tree.h
     ${SRC_DIR}/vocabulary_tree_descriptor_types.h
     ${SRC_DIR}/vocabulary_tree_descriptor_types.cpp
-    ${SRC_DIR}/vocabulary_tree_histogram_distance_types.h
     ${SRC_DIR}/vocabulary_tree_histogram_normalization_types.h
+    ${SRC_DIR}/vocabulary_tree_initial_histogram_distance_types.h
+    ${SRC_DIR}/vocabulary_tree_refined_histogram_distance_types.h
     ${SRC_DIR}/vocabulary_tree_types.h
     ${SRC_DIR}/vocabulary_tree_types.cpp
   )
