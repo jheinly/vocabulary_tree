@@ -1264,11 +1264,73 @@ refine_query_results(
     const WordHistogram & result_word_histogram =
       m_document_storage[storage_index].word_histogram;
 
+    const std::vector<HistogramEntry> & query_entries =
+      query_word_histogram.histogram_entries;
+    const std::vector<HistogramEntry> & result_entries =
+      result_word_histogram.histogram_entries;
+
     RefinedHistogramDistance refined_distance;
 
-    // TODO: Iterate through the histograms and update refined_distance.
-    // TODO: Make sure to use the inverse magnitudes and IDF weights.
-    // TODO: Store the resulting distance back into query_result.
+    size_t query_idx = 0;
+    size_t result_idx = 0;
+    const size_t query_size = query_entries.size();
+    const size_t result_size = result_entries.size();
+
+    while (query_idx < query_size && result_idx < result_size)
+    {
+      const word_t query_word = query_entries[query_idx].word;
+      const word_t result_word = result_entries[result_idx].word;
+
+      if (query_word < result_word)
+      {
+        refined_distance.add_term(
+          query_entries[query_idx].frequency *
+            query_word_histogram.inverse_magnitude,
+          0,
+          m_word_idf_weights[query_word]);
+        ++query_idx;
+      }
+      else if (query_word > result_word)
+      {
+        refined_distance.add_term(
+          0,
+          result_entries[result_idx].frequency *
+            result_word_histogram.inverse_magnitude,
+          m_word_idf_weights[result_word]);
+        ++result_idx;
+      }
+      else // if (query_word == result_word)
+      {
+        refined_distance.add_term(
+          query_entries[query_idx].frequency *
+            query_word_histogram.inverse_magnitude,
+          result_entries[result_idx].frequency *
+            result_word_histogram.inverse_magnitude,
+          m_word_idf_weights[query_word]);
+        ++query_idx;
+        ++result_idx;
+      }
+    }
+    while (query_idx < query_size)
+    {
+      refined_distance.add_term(
+        query_entries[query_idx].frequency *
+          query_word_histogram.inverse_magnitude,
+        0,
+        m_word_idf_weights[query_entries[query_idx].word]);
+      ++query_idx;
+    }
+    while (result_idx < result_size)
+    {
+      refined_distance.add_term(
+        0,
+        result_entries[result_idx].frequency *
+          result_word_histogram.inverse_magnitude,
+        m_word_idf_weights[result_entries[result_idx].word]);
+      ++result_idx;
+    }
+
+    query_result.score = refined_distance.compute_magnitude();
   }
 
   // Determine the number of results that can be returned.
